@@ -5,10 +5,14 @@ description: >
   wants to save what was learned, update instructions after a coding session,
   capture discoveries, or says "let's remember this for next time". Also
   triggers on "revise instructions" or "what should we add to our instructions".
+  NOT for auditing or scoring existing instruction quality — use
+  instructions-improver for that.
 ---
-# Revise Instructions
+# Capture Session Learnings into Instructions
 
 Review the current session for useful context and update instruction files so future sessions start with better knowledge. Focus on things Copilot got wrong or had to discover the hard way — those are the highest-value additions.
+
+> **Scope:** This skill captures learnings from the current session. To audit and score existing instruction files for quality, use the `instructions-improver` skill instead.
 
 ## Step 1: Reflect
 
@@ -40,28 +44,11 @@ ls AGENTS.md CLAUDE.md GEMINI.md 2>/dev/null && echo "  ⚠ Consider migrating t
 
 ## Step 3: Decide Placement
 
-For each learning, determine the right instruction file:
+Use the decision tree in [instructions-improver/references/instruction-types.md](../instructions-improver/references/instruction-types.md) to determine the right file for each learning. Quick summary:
 
-| Learning type | Target file |
-|---------------|-------------|
-| Build/test/deploy commands | `.github/copilot-instructions.md` |
-| Architecture overview | `.github/copilot-instructions.md` |
-| General coding standards | `.github/copilot-instructions.md` |
-| Gotchas and quirks | `.github/copilot-instructions.md` |
-| Environment setup | `.github/copilot-instructions.md` |
-| Language-specific conventions | `.github/instructions/<lang>.instructions.md` |
-| Framework-specific patterns | `.github/instructions/<framework>.instructions.md` |
-| Test file conventions | `.github/instructions/testing.instructions.md` |
-| Directory-specific rules | `.github/instructions/<dir>.instructions.md` |
-| Personal preferences | `$HOME/.copilot/copilot-instructions.md` |
-
-For new path-specific files, use `applyTo` frontmatter:
-
-```yaml
----
-applyTo: "**/*.ts,**/*.tsx"
----
-```
+- **Every task in this repo?** → `.github/copilot-instructions.md`
+- **Specific file types/directories?** → `.github/instructions/<name>.instructions.md`
+- **Personal preference?** → `$HOME/.copilot/copilot-instructions.md`
 
 ## Step 4: Draft Additions
 

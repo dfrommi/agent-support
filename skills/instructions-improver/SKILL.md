@@ -6,12 +6,15 @@ description: >
   including copilot-instructions.md, path-specific .instructions.md files,
   or the overall instruction architecture. Also triggers on "are my
   instructions any good", "instruction maintenance", or "optimize my
-  Copilot setup".
+  Copilot setup". NOT for capturing session learnings — use
+  instructions-reviser for that.
 ---
 
 # Copilot Instructions Improver
 
 Audit, score, and improve custom instruction files so Copilot has the best possible project context. This skill reads instruction files, scores them against type-specific rubrics, presents a quality report, then proposes targeted updates with user approval.
+
+> **Scope:** This skill audits and scores existing instruction files. To capture learnings from the current session (e.g., commands discovered, gotchas hit), use the `instructions-reviser` skill instead.
 
 ## Workflow
 
