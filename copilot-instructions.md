@@ -55,6 +55,7 @@ When editing existing code:
 - Match existing style, even if you'd do it differently.
 - Match existing patterns (e.g., where similar logic lives, how errors propagate), not just formatting.
 - If you notice unrelated dead code, mention it - don't delete it.
+- Update README.md and agent instructions if your changes affect them.
 
 When your changes create orphans:
 
