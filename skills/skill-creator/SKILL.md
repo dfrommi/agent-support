@@ -49,7 +49,7 @@ If useful, check available MCP servers for research (searching docs, finding sim
 
 ### Write the SKILL.md
 
-Based on the user interview, create the skill directory and SKILL.md. Use the conventions from [GitHub's docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills) and the [Agent Skills standard](https://agentskills.io).
+Based on the user interview, create the skill directory and SKILL.md. Use the conventions from [GitHub's docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills) and the [Agent Skills standard](https://agentskills.io).
 
 ---
 
@@ -104,7 +104,7 @@ allowed-tools: shell
 - `~/.copilot/skills/<skill-name>/SKILL.md`
 - `~/.agents/skills/<skill-name>/SKILL.md`
 
-When creating a skill, ask the user whether it should be project-scoped or personal. Default to personal skills (`~/.copilot/skills/`) for general-purpose workflows, project skills (`.github/skills/`) for repo-specific ones.
+When creating a skill, ask the user whether it should be project-scoped or personal. Default to personal skills (`~/.copilot/skills/`) for general-purpose workflows, and project skills (`.github/skills/`) for repo-specific ones. If the user wants a local/project skill and does not request a different supported path, prefer `.github/skills/` over other project-local locations so the default recommendation matches GitHub's documented examples.
 
 ### Progressive Disclosure
 
@@ -144,7 +144,7 @@ State prerequisites in SKILL.md (e.g., "Requires Node.js 18+") rather than assum
 
 #### Bundled scripts
 
-When you need reusable logic, bundle a script in `scripts/` that declares its own dependencies inline. Several languages support this:
+When you need reusable logic, bundle a script in `scripts/` that declares its own dependencies inline. Treat `scripts/` as the default location for bundled executables. Do not place scripts beside `SKILL.md` unless the user explicitly wants that layout or there is a strong reason to diverge. Several languages support this:
 
 - **Python** (PEP 723): Inline `# /// script` metadata block, run with `uv run scripts/extract.py`
 - **Node/Bun**: Version specifiers in imports, run with `npx` or `bun run`
