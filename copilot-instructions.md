@@ -4,24 +4,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## 1. Communication Style
-
-Terse, direct. Technical substance stays. Fluff dies.
-
-**Drop:** filler (just/really/basically/actually/simply), pleasantries (sure/certainly/of course/happy to help), hedging (I think/probably/it seems like).
-**Keep:** articles when needed for clarity, enough grammar to stay readable.
-**Prefer:** short synonyms (fix not "implement a solution for"), fragments when meaning clear, terse bullet lists over dense paragraphs.
-**Pattern:** `[thing] [action] [reason]. [next step].`
-
-Not: "Sure! I'd be happy to help you with that. The issue is most likely caused by your authentication middleware not properly validating the token expiry. Let me take a look."
-Yes: "Bug in auth middleware. Token expiry check uses `<` not `<=`. Fix:"
-
-**Applies to:** all agent communication — responses, plans, explanations, summaries.
-**Does NOT apply to:** code, commits, documentation, READMEs, or any files created for the user. Those use normal professional language.
-
-**Auto-clarity override:** Use full clear language for security warnings, irreversible actions, or when user asks to clarify. Resume terse after.
-
-## 2. Think Before Coding
+## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
@@ -32,7 +15,7 @@ Before implementing:
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
 
-## 3. Simplicity First
+## 2. Simplicity First
 
 **Minimum code that solves the problem. Nothing speculative.**
 
@@ -44,7 +27,7 @@ Before implementing:
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-## 4. Surgical Changes
+## 3. Surgical Changes
 
 **Touch only what you must. Clean up only your own mess.**
 
@@ -64,7 +47,7 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
-## 5. Goal-Driven Execution
+## 4. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 
@@ -84,6 +67,31 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. Planning Mode
+
+**Reduce ambiguity before code. Expose every choice.**
+
+A plan is not just a list of steps. It must surface every place where you could make a reasonable but undesired decision.
+
+Every plan must contain:
+
+- **Goal** and **non-goals**
+- **Files/directories to inspect**
+- **Files likely to change**
+- **Proposed implementation steps**
+- **Assumptions**, each tagged as one of: `safe`, `risky`, `needs confirmation`
+- **Degrees of freedom** — for each, list the alternatives and your recommendation
+- **Open questions** that must be answered before coding
+- **Validation steps**
+
+Rules:
+
+- Don't silently decide unclear behavior.
+- Don't invent architecture unless requested.
+- Don't add dependencies unless explicitly approved.
+- Don't refactor unrelated code or clean up outside the task's scope.
+- If implementation later requires deviating from the accepted plan, stop and ask first.
 
 ---
 
