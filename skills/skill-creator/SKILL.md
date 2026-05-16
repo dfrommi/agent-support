@@ -1,11 +1,11 @@
 ---
 name: skill-creator
-description: Create new agent skills and improve existing ones for GitHub Copilot CLI. Use when users want to create a skill from scratch, update or optimize an existing skill, turn a workflow into a reusable skill, or refine a skill's description for better triggering accuracy.
+description: Create new agent skills and improve existing ones. Use when users want to create a skill from scratch, update or optimize an existing skill, turn a workflow into a reusable skill, or refine a skill's description for better triggering accuracy.
 ---
 
 # Skill Creator
 
-A skill for creating new agent skills and iteratively improving them, targeting GitHub Copilot CLI and other agents that support the [Agent Skills](https://agentskills.io) open standard.
+A skill for creating new agent skills and iteratively improving them, following the [Agent Skills](https://agentskills.io) open standard.
 
 At a high level, the process of creating a skill goes like this:
 
@@ -37,7 +37,7 @@ Start by understanding the user's intent. Skills are most effective when grounde
 
 Either way, confirm the following with the user before proceeding:
 
-1. What should this skill enable Copilot to do?
+1. What should this skill enable the agent to do?
 2. When should this skill trigger? (what user phrases/contexts)
 3. What's the expected output format?
 
@@ -45,11 +45,11 @@ Either way, confirm the following with the user before proceeding:
 
 Proactively ask questions about edge cases, input/output formats, example files, success criteria, and dependencies. Come prepared with context to reduce burden on the user.
 
-If useful, check available MCP servers for research (searching docs, finding similar skills, looking up best practices).
+If useful, check available tools/MCP servers for research (searching docs, finding similar skills, looking up best practices).
 
 ### Write the SKILL.md
 
-Based on the user interview, create the skill directory and SKILL.md. Use the conventions from [GitHub's docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills) and the [Agent Skills standard](https://agentskills.io).
+Based on the user interview, create the skill directory and SKILL.md. Follow the [Agent Skills specification](https://agentskills.io/specification).
 
 ---
 
@@ -70,12 +70,14 @@ skill-name/
 
 ### YAML Frontmatter
 
-The frontmatter is how Copilot decides whether to load a skill. Required and optional fields:
+The frontmatter is how the agent decides whether to load a skill. Fields defined by the spec:
 
-- **name** (required): Lowercase, hyphen-separated identifier. Typically matches the directory name.
-- **description** (required): What the skill does and when Copilot should use it. This is the primary triggering mechanism — see "Description Optimization" below.
-- **allowed-tools** (optional): Pre-approve tools the skill needs (e.g., `shell`, `bash`). If omitted, Copilot prompts the user for confirmation before using tools. Only pre-approve `shell`/`bash` if the skill and any referenced scripts are fully trusted.
-- **license** (optional): License that applies to this skill.
+- **name** (required): 1–64 chars, lowercase letters/digits/hyphens only, no leading/trailing or consecutive hyphens. Must match the parent directory name.
+- **description** (required): 1–1024 chars. What the skill does and when the agent should use it. This is the primary triggering mechanism — see "Description Optimization" below.
+- **license** (optional): License name or reference to a bundled license file.
+- **compatibility** (optional, ≤500 chars): Environment requirements (intended product, system packages, network access, etc.). Only include if the skill has such requirements.
+- **metadata** (optional): Arbitrary string-to-string map for client-specific properties.
+- **allowed-tools** (optional, experimental): Space-separated list of tools the skill is pre-approved to use. Support varies between agents. Only pre-approve tools like `shell`/`bash` if the skill and any referenced scripts are fully trusted.
 
 **Example frontmatter:**
 ```yaml
@@ -96,21 +98,21 @@ allowed-tools: shell
 
 ### Where Skills Live
 
+Conventions vary by agent, but a common, agent-agnostic layout is:
+
 **Project skills** — specific to a single repository:
-- `.github/skills/<skill-name>/SKILL.md`
 - `.agents/skills/<skill-name>/SKILL.md`
 
 **Personal skills** — shared across all projects:
-- `~/.copilot/skills/<skill-name>/SKILL.md`
 - `~/.agents/skills/<skill-name>/SKILL.md`
 
-When creating a skill, ask the user whether it should be project-scoped or personal. Default to personal skills (`~/.copilot/skills/`) for general-purpose workflows, and project skills (`.github/skills/`) for repo-specific ones. If the user wants a local/project skill and does not request a different supported path, prefer `.github/skills/` over other project-local locations so the default recommendation matches GitHub's documented examples.
+When creating a skill, ask the user whether it should be project-scoped or personal. Default to personal skills for general-purpose workflows, and project skills for repo-specific ones. If the user's agent expects a different directory (some agents look in their own dedicated path), use that location instead.
 
 ### Progressive Disclosure
 
 Skills use a three-level loading system:
-1. **Metadata** (name + description) — Always in context (~100 words)
-2. **SKILL.md body** — Loaded when the skill triggers (<500 lines ideal)
+1. **Metadata** (name + description) — Always in context (~100 tokens)
+2. **SKILL.md body** — Loaded when the skill triggers (<500 lines / 5000 tokens recommended)
 3. **Bundled resources** — Loaded as needed (scripts can execute without being read into context)
 
 **Key patterns:**
@@ -126,11 +128,11 @@ cloud-deploy/
     ├── gcp.md
     └── azure.md
 ```
-Copilot reads only the relevant reference file.
+The agent reads only the relevant reference file.
 
 ### Including Scripts
 
-When a skill is invoked, Copilot discovers all files in the skill's directory and makes them available. For comprehensive guidance, see [Using scripts in skills](https://agentskills.io/skill-creation/using-scripts).
+When a skill is invoked, the agent discovers files in the skill's directory and makes them available. For comprehensive guidance, see [Using scripts in skills](https://agentskills.io/skill-creation/using-scripts).
 
 #### One-off commands
 
@@ -278,26 +280,26 @@ After sharing the draft with the user, work together to refine it. Even a single
 
 3. **Explain the why.** Transmit understanding into instructions rather than rigid rules. This produces more humane, powerful, and effective skills.
 
-4. **Bundle repeated work.** If the skill leads Copilot to independently write similar helper scripts each time, write it once and put it in `scripts/`.
+4. **Bundle repeated work.** If the skill leads the agent to independently write similar helper scripts each time, write it once and put it in `scripts/`.
 
 ---
 
 ## Description Optimization
 
-The description field is the primary mechanism that determines whether Copilot invokes a skill. After creating or improving a skill, offer to help optimize the description. For a deep dive, see [Optimizing skill descriptions](https://agentskills.io/skill-creation/optimizing-descriptions).
+The description field is the primary mechanism that determines whether an agent invokes a skill. After creating or improving a skill, offer to help optimize the description. For a deep dive, see [Optimizing skill descriptions](https://agentskills.io/skill-creation/optimizing-descriptions).
 
 ### How skill triggering works
 
-Skills appear in Copilot's available skills list with their name + description. Copilot decides whether to consult a skill based on that description matching the user's prompt. Copilot only consults skills for tasks it can't easily handle on its own — simple one-step queries may not trigger a skill even if the description matches, because Copilot can handle them directly. Complex, multi-step, or specialized queries reliably trigger skills when the description matches.
+Skills appear in the agent's available skills list with their name + description. The agent decides whether to consult a skill based on that description matching the user's prompt. Agents typically only consult skills for tasks they can't easily handle on their own — simple one-step queries may not trigger a skill even if the description matches. Complex, multi-step, or specialized queries reliably trigger skills when the description matches.
 
-Users can also force a skill by prefixing the skill name with `/` in their prompt, e.g. `/frontend-design create a responsive navbar`.
+Many agent harnesses also let users force a skill explicitly (e.g. by name or via a prefix). Check the host agent's docs if relevant.
 
 ### Writing good descriptions
 
 - **Use imperative phrasing.** Frame as an instruction: "Use this skill when…" rather than "This skill does…" — the agent is deciding whether to act.
 - **Focus on user intent, not implementation.** Describe what the user is trying to achieve, not the skill's internal mechanics.
 - **Be a little "pushy."** Explicitly list contexts where the skill applies, including cases where the user doesn't name the domain directly.
-- **Stay within the 1024-character limit** enforced by the [Agent Skills spec](https://agentskills.io).
+- **Stay within the 1024-character limit** enforced by the [Agent Skills spec](https://agentskills.io/specification).
 - **Watch for near-misses.** Consider cases where a naive keyword match would trigger but shouldn't — these help you find the right boundary.
 
 **Before and after:**
@@ -316,22 +318,9 @@ description: >
 
 ---
 
-## Managing Skills in Copilot CLI
-
-After creating a skill, the user can manage it with these CLI commands:
-
-- `/skills list` — List available skills
-- `/skills` — Toggle skills on/off interactively
-- `/skills info` — Details about a skill including its location
-- `/skills reload` — Reload skills without restarting the CLI (useful after adding a new skill mid-session)
-- `/skills add` — Add an alternative skills location
-- `/skills remove <skill-directory>` — Remove a directly-added skill
-
----
-
 ## Further Reading
 
-- [Creating agent skills for Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills) — GitHub docs
+- [Agent Skills specification](https://agentskills.io/specification) — Format, frontmatter fields, directory layout
 - [Best practices for skill creation](https://agentskills.io/skill-creation/best-practices) — Patterns and anti-patterns
 - [Optimizing skill descriptions](https://agentskills.io/skill-creation/optimizing-descriptions) — Systematic description testing
 - [Using scripts in skills](https://agentskills.io/skill-creation/using-scripts) — One-off commands, self-contained scripts, agentic design
