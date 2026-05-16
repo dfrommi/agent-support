@@ -1,8 +1,13 @@
 ---
 name: transcribe
-description: Extract transcripts from Apple Podcasts episode URLs and YouTube video URLs. Use this skill when the user wants a transcript, subtitles as markdown, or a transcript saved to a file. For Apple Podcasts, use the transcript cached by the macOS Podcasts app after the user opens the episode and transcript in Podcasts. For YouTube, use published subtitles only and prefer the best subtitle candidate with yt-dlp metadata instead of transcribing audio.
+description: >-
+  Extract transcripts from Apple Podcasts episode URLs and YouTube video URLs.
+  Use this skill when the user wants a transcript, subtitles as markdown, or a
+  transcript saved to a file. For Apple Podcasts, use the transcript cached by
+  the macOS Podcasts app after the user opens the episode and transcript in
+  Podcasts. For YouTube, use published subtitles only and prefer the best
+  subtitle candidate with yt-dlp metadata instead of transcribing audio.
 ---
-
 # Transcribe
 
 Extract transcripts into markdown.
@@ -16,8 +21,8 @@ Do not transcribe audio files for this skill. If no suitable YouTube subtitles e
 
 ## Available scripts
 
-- `$SKILL_ROOT/scripts/podcast.py` — Apple Podcasts URL or episode id -> markdown transcript from cached TTML
-- `$SKILL_ROOT/scripts/youtube.py` — YouTube URL -> markdown transcript from the best subtitle candidate
+- `./scripts/podcast.py` — Apple Podcasts URL or episode id -> markdown transcript from cached TTML
+- `./scripts/youtube.py` — YouTube URL -> markdown transcript from the best subtitle candidate
 
 ## Prerequisites
 
@@ -38,13 +43,13 @@ brew install yt-dlp
 Use this path for Apple Podcasts episode URLs only.
 
 ```bash
-python3 "$SKILL_ROOT/scripts/podcast.py" "APPLE_PODCASTS_URL"
+python3 "./scripts/podcast.py" "APPLE_PODCASTS_URL"
 ```
 
 If the user wants a file:
 
 ```bash
-python3 "$SKILL_ROOT/scripts/podcast.py" "APPLE_PODCASTS_URL" --output "transcript.md"
+python3 "./scripts/podcast.py" "APPLE_PODCASTS_URL" --output "transcript.md"
 ```
 
 ### Cache miss behavior
@@ -66,20 +71,20 @@ Do not fall back to audio transcription.
 Use this path for YouTube video URLs only.
 
 ```bash
-python3 "$SKILL_ROOT/scripts/youtube.py" "YOUTUBE_URL"
+python3 "./scripts/youtube.py" "YOUTUBE_URL"
 ```
 
 If the user wants a file:
 
 ```bash
-python3 "$SKILL_ROOT/scripts/youtube.py" "YOUTUBE_URL" --output "transcript.md"
+python3 "./scripts/youtube.py" "YOUTUBE_URL" --output "transcript.md"
 ```
 
 If the user asks for a specific language, pass one or more `--lang` values:
 
 ```bash
-python3 "$SKILL_ROOT/scripts/youtube.py" "YOUTUBE_URL" --lang en
-python3 "$SKILL_ROOT/scripts/youtube.py" "YOUTUBE_URL" --lang de --lang en
+python3 "./scripts/youtube.py" "YOUTUBE_URL" --lang en
+python3 "./scripts/youtube.py" "YOUTUBE_URL" --lang de --lang en
 ```
 
 ### Subtitle selection
@@ -113,3 +118,4 @@ The frontmatter should include source metadata such as title, source URL, source
 - Surface cache misses, missing subtitles, or parser failures directly
 - Do not hide partial failures behind success-shaped output
 - Prefer a clean explicit error over guessing
+
