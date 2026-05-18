@@ -24,6 +24,7 @@ Before implementing:
 - No "flexibility" or "configurability" that wasn't requested.
 - No error handling for impossible scenarios.
 - If you write 200 lines and it could be 50, rewrite it.
+- Unit tests for new code are part of the delivery and don't violate the "minimum code" principle.
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
@@ -67,31 +68,6 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
-## 5. Planning Mode
-
-**Reduce ambiguity before code. Expose every choice.**
-
-A plan is not just a list of steps. It must surface every place where you could make a reasonable but undesired decision.
-
-Every plan must contain:
-
-- **Goal** and **non-goals**
-- **Files/directories to inspect**
-- **Files likely to change**
-- **Proposed implementation steps**
-- **Assumptions**, each tagged as one of: `safe`, `risky`, `needs confirmation`
-- **Degrees of freedom** — for each, list the alternatives and your recommendation
-- **Open questions** that must be answered before coding
-- **Validation steps**
-
-Rules:
-
-- Don't silently decide unclear behavior.
-- Don't invent architecture unless requested.
-- Don't add dependencies unless explicitly approved.
-- Don't refactor unrelated code or clean up outside the task's scope.
-- If implementation later requires deviating from the accepted plan, stop and ask first.
 
 ---
 
