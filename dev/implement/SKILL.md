@@ -1,23 +1,41 @@
 ---
 name: implement
 description: >-
-  Execute an accepted implementation plan from ./.agents/todo/<slug>.plan.md.
-  Use when the user wants the plan turned into code.
+  Execute an accepted implementation plan from ./.agents/todo/<slug>.plan.md,
+  either as a whole plan or as one named/numbered execution slice.
 ---
-Implement the accepted plan. Don't redesign it.
+Implement the accepted plan. Do not redesign it.
 
 ## Process
 
-1. **Load the plan** from `./.agents/todo/<slug>.plan.md`. If the slug is ambiguous, ask. If no plan exists, offer to run the `plan` skill first.
-2. **Block on open questions.** If the plan's "Open questions" section has unanswered items, stop and ask before writing code.
-3. **Execute steps in order.** After each step, run the validation defined for it (or the plan's overall validation steps if per-step validation isn't given).
-4. **Deviation rule.** If implementation requires anything not in the plan — new files, new dependencies, a different approach, touching files not listed — stop and ask. Do not silently expand scope.
+1. **Load the plan** from `./.agents/todo/<slug>.plan.md`. If the slug or slice is ambiguous, ask. If no plan exists, offer to run the `plan` skill first.
+2. **Load referenced PRD.** If the plan references a PRD, load it too. Treat the plan as the operational contract; if the plan conflicts with the PRD, treat the PRD as authoritative and stop to resolve the conflict.
+3. **Choose scope.** Implement either the whole plan or one named/numbered execution slice, as requested. For slice work, use only that slice plus required shared context.
+4. **Block on unsafe gaps.** Stop before editing if there are unresolved risky assumptions, blocking open questions, or missing acceptance criteria for the requested scope.
+5. **Execute exactly.** Follow the plan/slice instructions, allowed files, and validation steps.
+6. **Produce a handoff note** after each slice or whole-plan completion.
 
-## Applicable principles
+## Deviation rule
 
-- **Simplicity First** — minimum code that satisfies the plan; no speculative additions.
-- **Surgical Changes** — touch only what the plan calls out; match existing style and patterns; remove only orphans your changes created.
-- **Goal-Driven Execution** — use the plan's validation steps as the loop condition.
+Do not silently deviate. Stop and ask if implementation requires:
 
-The test for every changed line: it traces directly to a step in the plan.
+- touching files not listed as allowed/likely to change
+- adding dependencies
+- changing user-visible behavior, APIs, persistence, schemas, auth, or permissions beyond the plan
+- expanding scope or choosing a different architecture
+- destructive behavior or migration not explicitly approved
+
+Safe implementation assumptions may be made and reported when they match existing patterns, naming/style/test conventions, preserve existing behavior, or use existing utilities/dependencies.
+
+## Handoff note
+
+After each slice, report:
+
+- **Completed work**
+- **Changed files**
+- **Validation run/result**
+- **Deviations** — if any, including approvals
+- **Next recommended slice**
+
+The test for every changed line: it traces directly to the accepted plan or selected execution slice.
 

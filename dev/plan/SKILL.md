@@ -1,36 +1,59 @@
 ---
 name: plan
 description: >-
-  Turn a PRD document or the current conversation into a detailed implementation
-  plan. Use when the user wants to create a plan from the current context or
-  from a given PRD file.
+  Create the durable implementation contract for a non-trivial change from the
+  current conversation, notes, issue text, or an optional PRD.
 ---
-Turn the current conversation or a given PRD into a detailed implementation plan. Don't write any code yet — just the plan.
+Create a self-contained implementation plan. Do not write code.
 
-If no PRD exists and the feature is non-trivial, offer to run the `discuss` skill first.
+The plan is the main durable handoff artifact and must be sufficient for a fresh context or smaller model to implement via `/new + @.agents/todo/<slug>.plan.md`.
 
-Save the plan to `./.agents/todo/<slug>.plan.md`, reusing the slug of the source PRD when one exists (so `add_user_api.prd.md` → `add_user_api.plan.md`).
+Save every plan to `./.agents/todo/<slug>.plan.md`. Reuse the source PRD slug when one exists (`add_user_api.prd.md` → `add_user_api.plan.md`).
 
-## Plan Contents
+If requirements are too unclear to create a safe plan, stop and recommend `discuss` or `prd` instead.
 
-Every plan must contain, in this order:
+## Requirements handling
 
-- **Source PRD** — relative path to the `.prd.md`, or "(none — derived from conversation)"
-- **Goal** and **non-goals**
-- **Files/directories to inspect**
+- A PRD is allowed but not required.
+- If no PRD exists, include a full requirements snapshot in the plan.
+- If a PRD exists, include a concise requirements summary and reference the PRD as authoritative.
+- Do not silently decide risky behavior. Ask first or record it as blocking.
+
+## Plan contents
+
+Every plan must contain:
+
+- **Source context / source PRD** — PRD path if any, otherwise conversation/issue/notes used
+- **Requirements snapshot** — self-contained behavior and constraints
+- **Non-goals**
+- **Current codebase findings**
+- **Files/directories inspected**
 - **Files likely to change**
-- **Proposed implementation steps** — each step small enough to be independently reviewable and committable on its own
-- **Assumptions** — each tagged `safe`, `risky`, or `needs confirmation`
-- **Degrees of freedom** — for each, the alternatives considered and your recommendation
-- **Open questions** that must be answered before coding
-- **Validation steps** — exact commands to run, what passing output looks like, which tests cover which behavior
+- **Proposed approach**
+- **Assumptions** — classify as `safe`, `risky confirmed`, or `risky unresolved`
+- **Degrees of freedom and recommendations** — alternatives and recommended choice
+- **Open questions** — especially blockers before implementation
+- **Execution slices** suitable for fresh contexts
+- **Validation steps** — exact commands/checks and expected passing signal
+
+## Execution slice format
+
+Each slice should include:
+
+- **Goal**
+- **Required context/files to read**
+- **Allowed files to change**
+- **Task instructions**
+- **Validation command**
+- **Stop/deviation conditions**
+- **Handoff note to produce after completion**
 
 ## Rules
 
-- Don't silently decide unclear behavior.
+- Keep plans proportionate; do not over-formalize tiny tasks.
 - Don't invent architecture unless requested.
 - Don't add dependencies unless explicitly approved.
-- Don't plan to refactor unrelated code or clean up outside the task's scope.
-- **If any Open Question is unanswered when implementation starts, stop and ask.**
-- If implementation later requires deviating from the accepted plan, stop and ask first.
+- Don't plan unrelated refactors or cleanup.
+- Mark unresolved risky assumptions/open questions as blocking for implementation.
+- If implementation later requires deviating from the accepted plan, it must stop and ask first.
 
