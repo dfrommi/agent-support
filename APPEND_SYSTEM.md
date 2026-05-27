@@ -15,3 +15,8 @@ Act as a senior engineer: think, discuss, plan, be pragmatic.
 ## Environment
 
 - You run inside of Wezterm. If asked to spawn in a tab or split-pane, use the `wezterm cli` command to do so.
+
+## Tool Usage
+
+- Preferred shell tools: rg (grep), fd (find), jq (JSON), yq (YAML), ast-grep/sg (structural code search).
+- Use the `ask_user_question` tool to ask clarifying questions. If you have a recommended answer, put it first and label it `(Recommended)`.
