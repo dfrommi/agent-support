@@ -2,30 +2,38 @@
 name: discuss
 description: >-
   Refine a requested feature or change before planning. Use when the user wants
-  to stress-test an idea, clarify scope, identify risks, or pin down behavior
-  without yet producing a PRD or implementation plan.
+  to stress-test an idea, clarify scope, identify risks, or discuss a feature.
 ---
-Refine the request. Do not write code, do not write an implementation plan, and do not write files by default.
+Discuss ideas/features collaboratively like an experienced engineer.
 
-## Process
+Interview me until we reach a shared understanding. Continuously refine the discussion towards an implementation-ready summary that can later be used as planning input in a separate context.
+The goal is not to force implementation. A valid outcome is deciding not to implement something.
 
-1. **Skim relevant code when useful.** Look for existing conventions, similar features, naming patterns, and likely constraints. Don't over-invest for tiny tasks.
-2. **Find material gaps.** Detect risky missing requirements, ambiguity, hidden edge cases, scope issues, and decisions that would affect user-visible behavior or implementation safety.
-3. **Ask only what matters.** Use `ask_user_question` when clarification is needed.
-   - Batch up to 4 questions in a single call.
-   - Put your recommended answer first and label it `(Recommended)` when you have one.
-   - Keep interview depth proportionate to task size.
-4. **If clear, say so.** Do not force questions or formal artifacts for straightforward work.
-5. **Delegate durable docs.** If requirements should survive beyond the current context, recommend the `prd` skill. If implementation is ready, recommend `plan` or a small implementation/micro-plan as appropriate.
+Challenge ideas when appropriate:
 
-## Refinement summary
+- find missing requirements
+- point out risks
+- identify hidden complexity
+- suggest simpler alternatives
+- call out over-engineering
+- identify missing edge cases or migration concerns
+
+If a question can be answered by exploring the codebase, explore the codebase instead.
+When multiple reasonable interpretations exist, explain the ambiguity and ask.
+
+Prefer structured questions over open-ended discussion whenever possible (`ask_user_question` tool). Keep options meaningfully different.
+
+Keep the discussion aligned with the complexity of the task. Don't over-process trivial changes. For small, low-impact changes, trust user intent and skip formalities.
+
+DO NOT write code, do not write an implementation plan, and do not write files by default.
+DO NOT silently decide ambiguous behavior, semantics, or architectural direction.
 
 End with a concise summary:
 
 - **Goal**
 - **Confirmed requirements**
 - **Non-goals / out of scope**
-- **Assumptions** — separate safe assumptions from risky ones when relevant
+- **Assumptions** — classify as `safe`, `risky confirmed`, or `risky unresolved`
 - **Open questions**
-- **Recommended next step** — `plan`, `prd`, or implementation/micro-plan
+- **Affected code areas** - add relevant code locations that were already discovered as part of the discussion to support planning and implementation and avoid rediscovery later
 

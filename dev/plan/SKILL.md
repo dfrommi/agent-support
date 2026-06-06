@@ -2,28 +2,23 @@
 name: plan
 description: >-
   Create the durable implementation contract for a non-trivial change from the
-  current conversation, notes, issue text, or an optional PRD.
+  current conversation.
 ---
 Create a self-contained implementation plan. Do not write code.
 
-The plan is the main durable handoff artifact and must be sufficient for a fresh context or smaller model to implement via `/new + @.agents/todo/<slug>.plan.md`.
-
-Save every plan to `./.agents/todo/<slug>.plan.md`. Reuse the source PRD slug when one exists (`add_user_api.prd.md` → `add_user_api.plan.md`).
-
-If requirements are too unclear to create a safe plan, stop and recommend `discuss` or `prd` instead.
+The plan is the main durable handoff artifact and must be sufficient for a fresh context or smaller model to implement via `/new + @<plan-file>.md`.
+Save every plan to `./.agents/todo/<slug>.plan.md`.
 
 ## Requirements handling
 
-- A PRD is allowed but not required.
-- If no PRD exists, include a full requirements snapshot in the plan.
-- If a PRD exists, include a concise requirements summary and reference the PRD as authoritative.
+- If requirements are too unclear to create a safe plan, stop and recommend `discuss` skill instead.
+- Include a full requirements snapshot in the plan.
 - Do not silently decide risky behavior. Ask first or record it as blocking.
 
 ## Plan contents
 
 Every plan must contain:
 
-- **Source context / source PRD** — PRD path if any, otherwise conversation/issue/notes used
 - **Requirements snapshot** — self-contained behavior and constraints
 - **Non-goals**
 - **Current codebase findings**
