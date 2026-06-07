@@ -1,13 +1,18 @@
 ---
-name: plan
-description: >-
-  Create the durable implementation contract for a non-trivial change from the
-  current conversation.
+description: Create an implementation plan
+argument-hint: '[source]'
 ---
+# Implementation Plan Creation
+
 Create a self-contained implementation plan. Do not write code.
 
 The plan is the main durable handoff artifact and must be sufficient for a fresh context or smaller model to implement via `/new + @<plan-file>.md`.
 Save every plan to `./.agents/todo/<slug>.plan.md`.
+
+## Topic
+
+Create a plan for the current conversation.
+Optional focus: $ARGUMENTS
 
 ## Requirements handling
 

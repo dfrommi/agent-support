@@ -25,14 +25,15 @@
 #
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$PWD"
 MEMORY_DIR="$PROJECT_DIR/.agents/memory"
 PIPELINE_DIR="$PROJECT_DIR/.memory-pipeline"
 CACHE_DIR="$PIPELINE_DIR/cache"
 PROCESSED_DIR="$PIPELINE_DIR/processed"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPRESS_SCRIPT="$SCRIPT_DIR/compress-sessions.py"
-PROMPTS_DIR="$SCRIPT_DIR/prompts"
+PROMPTS_DIR="$SCRIPT_DIR"
 
 PI_MODEL="${PI_MODEL:-deepseek/deepseek-v4-pro}"
 

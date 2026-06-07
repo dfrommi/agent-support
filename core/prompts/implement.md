@@ -1,14 +1,14 @@
 ---
-name: implement
-description: >-
-  Execute an accepted implementation plan from ./.agents/todo/<slug>.plan.md,
-  either as a whole plan or as one named/numbered execution slice.
+description: Implement a plan
+argument-hint: <slug>
 ---
+# Plan Implemention
+
 Implement the accepted plan. Do not redesign it.
 
 ## Process
 
-1. **Load the plan** from `./.agents/todo/<slug>.plan.md`. If the slug or slice is ambiguous, ask. If no plan exists, offer to run the `plan` skill first.
+1. **Load the plan** from `./.agents/todo/$1.plan.md`. If the slug or slice is ambiguous, ask. If no plan exists, offer to run the `plan` skill first.
 2. **Load referenced PRD.** If the plan references a PRD, load it too. Treat the plan as the operational contract; if the plan conflicts with the PRD, treat the PRD as authoritative and stop to resolve the conflict.
 3. **Choose scope.** Implement either the whole plan or one named/numbered execution slice, as requested. For slice work, use only that slice plus required shared context.
 4. **Block on unsafe gaps.** Stop before editing if there are unresolved risky assumptions, blocking open questions, or missing acceptance criteria for the requested scope.

@@ -24,7 +24,7 @@ import * as os from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 /**
- * Derive the Pi session directory from CWD, matching compress-sessions.py.
+ * Derive the Pi session directory from CWD.
  * /Users/dennis/my/project → ~/.pi/agent/sessions/--Users-dennis-my-project--
  */
 function getSessionDir(cwd: string): string {

@@ -1,12 +1,12 @@
 ---
-name: discuss
-description: >-
-  Refine a requested feature or change before planning. Use when the user wants
-  to stress-test an idea, clarify scope, identify risks, or discuss a feature.
+description: Discuss a topic until a shared understanding is reached
+argument-hint: <topic>
 ---
-Discuss ideas/features collaboratively like an experienced engineer.
+# Topic-Discussion
 
-Interview me until we reach a shared understanding. Continuously refine the discussion towards an implementation-ready summary that can later be used as planning input in a separate context.
+Topic: $ARGUMENTS
+
+Interview me until we reach a shared understanding of the topic. Continuously refine the discussion towards an implementation-ready summary.
 The goal is not to force implementation. A valid outcome is deciding not to implement something.
 
 Challenge ideas when appropriate:
@@ -21,7 +21,7 @@ Challenge ideas when appropriate:
 If a question can be answered by exploring the codebase, explore the codebase instead.
 When multiple reasonable interpretations exist, explain the ambiguity and ask.
 
-Prefer structured questions over open-ended discussion whenever possible (`ask_user_question` tool). Keep options meaningfully different.
+Prefer structured questions over open-ended discussion whenever possible (use `ask_user_question` tool). Keep options meaningfully different.
 
 Keep the discussion aligned with the complexity of the task. Don't over-process trivial changes. For small, low-impact changes, trust user intent and skip formalities.
 
