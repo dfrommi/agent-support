@@ -55,15 +55,19 @@ Create one `tasks/NN-*.md` file per subtask. Each task file must include:
 
 - goal;
 - why this slice exists / value delivered;
-- required context/files to read;
-- allowed files to change;
-- task instructions;
-- validation command(s) and expected passing signal;
+- dependencies on previous subtasks, if any;
+- what you need to know — key facts discovered during splitting that would be wasteful to re-investigate (API endpoints, existing patterns to follow, file paths, non-obvious constraints). One or two sentences of context plus terse bullet points for key facts;
+- files in scope — which files or modules the task operates within. For new files, state where they go. Do not specify exact changes;
+- scope and constraints — what the task must achieve and what it must NOT do. If a downstream task depends on specific capabilities exposed by this task, state them as prose contracts (e.g. "task 02 will need the nuki executor to be accessible from CommandService"), not as code;
+- validation commands and expected passing signal;
 - stop/deviation conditions;
 - expected handoff content;
-- dependencies on previous subtasks, if any.
 
-Keep task files detailed enough for one fresh context to execute that task without redoing broad discovery. Do not duplicate the full feature discussion into every task unless needed.
+A task file sets boundaries for a fresh context, not a pre-written implementation plan.
+Do not include implementation code or step-by-step instructions — the next context decides how to implement within the given scope.
+Discovered facts and boundary contracts are the exception: share what you found and what downstream tasks need, but not how to build it.
+
+Do not duplicate the full feature discussion into every task.
 
 ## Stop conditions
 
