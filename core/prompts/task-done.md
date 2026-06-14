@@ -9,7 +9,6 @@ Mark one reviewed workflow task as done and record its durable handoff.
 
 1. Identify `workflow.md` file and the target task from the task just worked in this same context.
 2. Confirm the task is valid and not already `done`; if ambiguous, ask.
-3. Require user review/approval before marking the task done.
 
 ## Collect handoff
 
@@ -33,6 +32,10 @@ Update `workflow.md` only to:
 
 Do not start the next task automatically. Do not implement code. Do not create commits.
 
+## Finalize feature
+
+If no pending tasks remain in the workflow, move the entire feature directory from `.agents/todo` to `.agents/done`.
+
 ## Final response
 
 Report:
@@ -40,4 +43,5 @@ Report:
 - task marked done;
 - workflow file changed;
 - validation or checks performed.
+- pending tasks or feature completion
 

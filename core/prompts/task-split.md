@@ -1,6 +1,6 @@
 ---
 description: Split a discussed task into a small-context workflow
-argument-hint: '[source/focus]'
+argument-hint: '[focus]'
 ---
 # Task Workflow Split
 
@@ -18,6 +18,7 @@ Do not implement code during this command.
 - If a question can be answered by reading local files, inspect the codebase instead of asking.
 - Read only enough context to split safely.
 - Consider requirement-driven, code-driven, and architecture-driven split options.
+- If working on a ticket, use its subtasks as hint for functional split - if existing.
 - Optimize for low mental load, independent value where possible, and subtasks that keep the build usable.
 - Avoid over-processing trivial changes.
 
@@ -81,5 +82,5 @@ After writing files, report:
 - created files;
 - task list with checkbox statuses;
 - validation or static checks performed;
-- next recommended command, usually `/task-work .agents/todo/<slug>/workflow.md`.
+- next recommended command, usually `/task-next .agents/todo/<slug>/workflow.md`.
 
