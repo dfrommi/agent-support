@@ -4,8 +4,6 @@ argument-hint: <topic>
 ---
 # Topic-Discussion
 
-Topic: $ARGUMENTS
-
 Interview me until we reach a shared understanding of the topic. Continuously refine the discussion towards an implementation-ready summary.
 The goal is not to force implementation. A valid outcome is deciding not to implement something.
 
@@ -36,4 +34,8 @@ End with a concise summary:
 - **Assumptions** — classify as `safe`, `risky confirmed`, or `risky unresolved`
 - **Open questions**
 - **Affected code areas** - add relevant code locations that were already discovered as part of the discussion to support planning and implementation and avoid rediscovery later
+
+## Today's Topic
+
+$ARGUMENTS
 
