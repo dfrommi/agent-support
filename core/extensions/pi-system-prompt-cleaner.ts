@@ -4,16 +4,18 @@
  * Also auto-inject once per session when user input contains the word "Pi".
  */
 
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+
 const PI_DOCS_SECTION =
 	/\nPi documentation \(read only when the user asks about pi itself[^\n]*\):\n(?:- [^\n]*\n)*- [^\n]*/i;
 const PI_WORD = /(^|[^\p{L}\p{N}_])pi(?=$|[^\p{L}\p{N}_])/iu;
 const CUSTOM_TYPE = "pi-docs-guidance";
 
-export default function piSystemPromptCleaner(pi: any) {
+export default function piSystemPromptCleaner(pi: ExtensionAPI) {
 	let rememberedPiDocs = "";
 	let piDocsInjected = false;
 
-	pi.on("session_start", async (_event: any, ctx: any) => {
+	pi.on("session_start", async (_event: any, ctx: ExtensionContext) => {
 		piDocsInjected = ctx.sessionManager
 			.getEntries()
 			.some((entry: any) => entry.type === "custom_message" && entry.customType === CUSTOM_TYPE);
@@ -21,7 +23,7 @@ export default function piSystemPromptCleaner(pi: any) {
 
 	pi.registerCommand("pi", {
 		description: "Inject Pi documentation guidance into context",
-		handler: async (_args: string, ctx: any) => {
+		handler: async (_args: string, ctx: ExtensionCommandContext) => {
 			if (injectPiDocs(ctx)) {
 				ctx.ui.notify("Pi documentation guidance injected into context.", "info");
 			} else if (piDocsInjected) {
@@ -32,11 +34,11 @@ export default function piSystemPromptCleaner(pi: any) {
 		},
 	});
 
-	pi.on("input", async (event: any, ctx: any) => {
+	pi.on("input", async (event: any, ctx: ExtensionContext) => {
 		if (!piDocsInjected && PI_WORD.test(event.text) && injectPiDocs(ctx, event.streamingBehavior)) {
 			ctx.ui.notify("Pi documentation guidance injected into context.", "info");
 		}
-		return { action: "continue" };
+		return { action: "continue" as const };
 	});
 
 	pi.on("before_agent_start", async (event: any) => {
@@ -48,7 +50,7 @@ export default function piSystemPromptCleaner(pi: any) {
 		};
 	});
 
-	function injectPiDocs(ctx: any, deliverAs?: "steer" | "followUp") {
+	function injectPiDocs(ctx: ExtensionContext, deliverAs?: "steer" | "followUp") {
 		if (piDocsInjected) return false;
 
 		rememberPiDocs(ctx.getSystemPrompt());
