@@ -12,7 +12,7 @@ Mark one reviewed workflow task as done and record its durable handoff.
 
 ## Collect handoff
 
-Record a compact final handoff in `workflow.md` with:
+Record a compact final handoff in a new section of `workflow.md` with:
 
 - completed work summary;
 - changed files;
@@ -29,6 +29,8 @@ Update `workflow.md` only to:
 - change the selected task's `- [ ]` to `- [x]`;
 - add the compact handoff for that task;
 - keep other open tasks unchanged.
+
+Update `workflow.json` only to set the selected task's status to `done: true`
 
 Do not start the next task automatically. Do not implement code. Do not create commits.
 

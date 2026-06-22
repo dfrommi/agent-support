@@ -26,6 +26,8 @@ Keep the discussion aligned with the complexity of the task. Don't over-process 
 DO NOT write code, do not write an implementation plan, and do not write files by default.
 DO NOT silently decide ambiguous behavior, semantics, or architectural direction.
 
+Try to resolve the `risky unresolved` assumptions and open questions before concluding the discussion.
+
 End with a concise summary:
 
 - **Goal**
@@ -34,6 +36,7 @@ End with a concise summary:
 - **Assumptions** — classify as `safe`, `risky confirmed`, or `risky unresolved`
 - **Open questions**
 - **Affected code areas** - add relevant code locations that were already discovered as part of the discussion to support planning and implementation and avoid rediscovery later
+- **Decision log / rejected options** - capture alternatives that were considered but explicitly rejected or deferred, so future sessions do not reopen them accidentally.
 
 ## Today's Topic
 

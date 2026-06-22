@@ -12,9 +12,10 @@ Activate exactly one task from a task workflow. Don't start with the implementat
 1. Load the `workflow.md`. If it is missing or ambiguous, stop and ask.
 2. Select the first `- [ ]` (open) task in workflow order.
 3. Load the task detail file for the selected task (e.g., `tasks/01-*.md`).
-4. Do not read any source code files — source reading happens during implementation, not during task selection.
 
-## Block before editing
+Task Workflow Activation is docs-only: do not read source code, tests, or implementation files, and do not edit anything. This restriction applies only to this task-selection prompt and does not apply to later implementation plan creation or implementation prompts.
+
+## Block before activating
 
 Stop before editing if any of these are true:
 

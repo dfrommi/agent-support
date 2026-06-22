@@ -25,7 +25,7 @@ Do not implement code during this command.
 ## Before writing files
 
 Propose the slice boundaries first and wait for explicit user approval before creating files.
-Use `ask_user_question` when multiple meaningful choices must be resolved.
+Use `ask_user_question` when multiple meaningful choices must be resolved. Include a single-task option if the task is easy enough to not require subtasks.
 Stop rather than silently decide risky behavior, ambiguous architecture, or missing acceptance criteria.
 
 Choose a descriptive filesystem-safe slug based on the feature/topic. The workflow folder is:
@@ -45,7 +45,7 @@ If the target folder exists or any file would be overwritten, stop and ask.
 Create `.agents/todo/<slug>/workflow.md` as the compact entry point. Include:
 
 - feature title and slug;
-- compact requirements snapshot;
+- requirements snapshot;
 - non-goals / out of scope;
 - important assumptions and decisions;
 - ordered task queue using `- [ ]` / `- [x]` checkbox markers for `open` / `done` status;
@@ -69,6 +69,27 @@ Do not include implementation code or step-by-step instructions — the next con
 Discovered facts and boundary contracts are the exception: share what you found and what downstream tasks need, but not how to build it.
 
 Do not duplicate the full feature discussion into every task.
+
+Create `.agents/todo/<slug>/workflow.json` as a machine-readable version of the `workflow.md` file. Follow strictly this JSON format:
+
+```json
+{
+  "title": "Feature title",
+  "slug": "feature-slug",
+  "tasks": [
+    {
+      "id": "01-short-task-name",
+      "summary": "One-sentence summary of the task",
+      "file": "tasks/01-short-task-name.md",
+      "done": false,
+      "complexity": "low|medium|high",
+    }
+  ]
+}  
+```
+
+Tasks must be ordered by execution sequence.
+Complexity is a subjective estimate of the mental load required to complete the task.
 
 ## Stop conditions
 
