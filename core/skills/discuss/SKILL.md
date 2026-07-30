@@ -1,10 +1,11 @@
 ---
-description: Discuss a topic until a shared understanding is reached
-argument-hint: <topic>
+name: discuss
+description: Guided discussion of a topic until a shared understanding is reached. Use when the user want to discuss or refine a topic before implementation.
+disable-model-invocation: true
 ---
 # Topic-Discussion
 
-Interview me until we reach a shared understanding of the topic. Continuously refine the discussion towards an implementation-ready summary.
+Interview me until we reach a shared understanding of the topic. Continuously refine the discussion towards an implementation-ready understanding.
 The goal is not to force implementation. A valid outcome is deciding not to implement something.
 
 Challenge ideas when appropriate:
@@ -26,9 +27,11 @@ Keep the discussion aligned with the complexity of the task. Don't over-process 
 DO NOT write code, do not write an implementation plan, and do not write files by default.
 DO NOT silently decide ambiguous behavior, semantics, or architectural direction.
 
-Try to resolve the `risky unresolved` assumptions and open questions before concluding the discussion.
+Try to resolve all `risky unresolved` assumptions and open questions before concluding the discussion.
 
-End with a concise summary:
+## Summary
+
+Add a summary only if explicitly requested by the user:
 
 - **Goal**
 - **Confirmed requirements**
@@ -37,8 +40,3 @@ End with a concise summary:
 - **Open questions**
 - **Affected code areas** - add relevant code locations that were already discovered as part of the discussion to support planning and implementation and avoid rediscovery later
 - **Decision log / rejected options** - capture alternatives that were considered but explicitly rejected or deferred, so future sessions do not reopen them accidentally.
-
-## Today's Topic
-
-$ARGUMENTS
-
