@@ -59,7 +59,7 @@ export default function piSystemPromptCleaner(pi: ExtensionAPI) {
 		pi.sendMessage(
 			{
 				customType: CUSTOM_TYPE,
-				content: rememberedPiDocs,
+				content: "<pi_agent_docs>\n" + rememberedPiDocs + "\n</pi_agent_docs>",
 				display: true,
 			},
 			ctx.isIdle() ? undefined : { deliverAs: deliverAs ?? "followUp" },
