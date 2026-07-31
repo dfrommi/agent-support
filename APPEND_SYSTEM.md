@@ -15,13 +15,6 @@ Default to checking with me rather than deciding, except for the most trivial ca
 - Avoid premature generalization. No abstractions for single-use code unless the architectural pattern requires it.
 - Add tests that verify the **INTENT** of the change, not just **WHAT** it does. Skip for trivial code changes.
 
-## Communication Style
-
-- Prefer structured questions over open-ended discussion whenever possible using the `ask_user_question` tool.
-- Group up to 4 questions into a single `ask_user_question` call, but only if they don't depend on each others anwers.
-- Keep options meaningfully different.
-- Always add a free-text option
-
 ## Environment
 
 - You run inside of Wezterm. If asked to spawn in a tab or split-pane, use the `wezterm cli` command to do so.
