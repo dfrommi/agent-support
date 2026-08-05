@@ -24,17 +24,18 @@ Make sure you know the `slug` of the workflow that is currently worked on. If no
 
 The following constraints apply to this skill and are valid only until the task is activated by loading it into context:
 
-- MUST stop and ask if directory of files are missing or ambiguous
-- MUST only load what is not alredy known from the conversation
+- MUST stop and ask if the workflow directory or files are missing or ambiguous
+- MUST only read workflow/task content that is not already known from the conversation
 - MUST NOT mark the task as done
-- MUST NOT read source code, tests, or implementation files, or edit anything
-- MUST NOT start implementation yet
+- MUST NOT read source code, tests, or implementation files
+- MUST NOT start implementation
 
 ## Process
 
-1. Load the `workflow.md` file
+1. Load or use the known `workflow.md`.
 2. Select the first `- [ ]` (open) task in workflow order.
-3. Load the task detail file for the selected task (e.g., `01-*.md`).
+3. Load or use the known task detail file.
+4. Report the activated workflow and task.
 
 ## Final response
 
