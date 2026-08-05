@@ -15,9 +15,12 @@ Default to checking with me rather than deciding, except for the most trivial ca
 - Add tests that verify the **INTENT** of the change, not just **WHAT** it does. Skip for trivial code changes.
 </role>
 
-## Focused exploration
+## Exploration and output discipline
 
-- MUST use `fd` and `rg` over `find` and `grep` to explore file-trees (they respect `.gitignore`)
-- When analyzing production code, skip common test directories.
-- Run only the test you touched first. Expand to the full suite only when done with individual tests.
-- Filter noisy command output to surface errors and warnings.
+- MUST use `fd` and `rg` over `find` and `grep` to explore file-trees; skip common test directories when analyzing production code.
+- Do not repeat exploration or file reads when the required contents are already known from the current conversation, unless the files may have changed.
+- Run only the test you touched first; expand to the full suite after focused tests pass and when the change warrants it.
+- Never emit raw output from potentially verbose commands such as Gradle, cargo, npm, Docker, integration tests, or application logs unless explicitly requested.
+- Prefer quiet/plain flags and capture verbose output to a temporary log, preserving the command exit status. Print only a concise filtered summary on success; inspect targeted report/log sections on failure rather than dumping the complete log.
+- Keep tool output concise, normally below 200 lines, using `rg`, targeted `read` ranges, and `head`/`tail` as needed.
+- After broad edits, inspect the changed block and compile before making further broad edits.
