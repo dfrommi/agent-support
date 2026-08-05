@@ -83,7 +83,7 @@ Create `workflow.md` as the compact entry point. Include:
   - ordered by execution sequence
   - using `- [ ]` / `- [x]` checkbox markers for `open` / `done` status
   - one-sentence description per task
-  - link to each `tasks/NN-*.md` detail file
+  - link to each `NN-*.md` detail file
 
 ### Task Files
 
@@ -109,9 +109,8 @@ Do not duplicate the full feature discussion into every task.
 
 After writing files, report:
 
+- slug
 - workflow folder path;
 - created files;
-- task list with checkbox statuses;
-- validation or static checks performed;
+- task list
 - next recommended command, usually `/task-next .scratch/todo/<slug>/workflow.md`.
-
