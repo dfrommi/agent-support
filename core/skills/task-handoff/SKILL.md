@@ -1,26 +1,22 @@
 ---
 name: task-handoff
-description: Compact the coding session into a handoff document for another agent to pick up.
+description: Compact the current coding session into a handoff document for another agent to pick up.
 disable-model-invocation: true
 ---
 
 ## Goal
 
-Write a handoff document summarising the current coding session and its progress so a fresh agent can continue the work.
+Write exactly one concise Markdown handoff to the user's OS temporary directory. It must let a fresh agent continue an approved task-split session without rereading the conversation.
 
-### Preconditions
+## Preconditions
 
-- Know the agreed ordered split from the conversation
-- Identify the active slice and which slices are complete, current, and pending.
-- If the active slice is unfinished, record it as in progress rather than done.
+- An ordered split is agreed.
+- Record whether the handoff is **between slices** or **during a slice**.
+- At a boundary, the next slice is **not started**; do not call it current or in progress.
 
-### Document Schema
+## Required content
 
-Write exactly one Markdown document to the temporary directory of the user's OS - not the current workspace.
-
-Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
-
-The handoff must be concise but complete enough for a new context to continue without the old conversation. Use this structure:
+Use this structure:
 
 ```markdown
 # <title>
@@ -31,17 +27,40 @@ The handoff must be concise but complete enough for a new context to continue wi
 
 ## Non-goals and constraints
 
+## Task-split state
+
+- Split approved: yes
+- Handoff point: between slices | during slice
+- Active slice: none | <number and title>
+- Active slice status: not applicable | in progress
+- Next slice: <number and title>
+- Completed slices: <numbers>
+- Pending slices: <numbers>
+
 ## Ordered split
 
-- [x] 01 ...
-- [ ] 02 ... (current)
-- [ ] 03 ...
+| Slice | Purpose | Completion / validation |
+|---|---|---|
+| 01 | ... | ... |
+| 02 | ... | ... |
 
-## Progress and implementation state
+## Implementation state
 
 ### Completed
 
-### Current slice
+### Active slice or next action
+
+### Current slice acceptance
+
+- ...
+
+### Focused files and tests
+
+- ...
+
+### Correctness traps
+
+- ...
 
 ### Pending
 
@@ -55,9 +74,18 @@ The handoff must be concise but complete enough for a new context to continue wi
 
 ## Deviations, blockers, and open questions
 
-## Split Execution contract
+## Split execution contract
+
+This is an approved task-split continuation. Load and follow the `task-split` skill's execution contract. Do not create a new split.
+
+- During a slice: resume the active slice immediately.
+- Between slices: start the next slice immediately; it is not yet in progress.
+- Work on one slice only.
+- After completing it, report changes, validation, deviations, and questions, then stop for confirmation before continuing.
 
 ## Next action
+
+State the immediate action explicitly. At a slice boundary, it must start the next slice; during a slice, it must resume the active slice.
 
 <read-files>
 ...
@@ -68,6 +96,18 @@ The handoff must be concise but complete enough for a new context to continue wi
 </modified-files>
 ```
 
-Include only facts relevant to continuation. Preserve exact names, interfaces, commands, test results, and known unrelated failures when they matter. Do not include speculative plans or repeat the entire conversation.
+## Content rules
+
+- State the active/next distinction explicitly.
+- For a boundary handoff, write `Start the next slice immediately after loading this handoff.`
+- For an in-progress handoff, write `Resume the active slice immediately after loading this handoff.`
+- Never require an extra start command for the next slice.
+- Describe every slice with its purpose and validation boundary.
+- State what is implemented, what is connected to runtime, and what remains unchanged.
+- For the active/next slice, list acceptance checks, focused files/tests, and correctness traps.
+- Preserve exact names, interfaces, commands, test results, and relevant unrelated failures.
+- Include policy matrices or other decisions a fresh agent cannot safely infer from file paths alone.
+- Reference existing artifacts instead of duplicating them.
+- Do not include speculative plans.
 
 After writing, report the path.
