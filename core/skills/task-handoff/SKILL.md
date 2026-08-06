@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 ## Goal
 
-Write exactly one concise Markdown handoff to the user's OS temporary directory. It must let a fresh agent continue an approved task-split session without rereading the conversation.
+Write exactly one concise Markdown handoff to the user's OS temporary directory. It must let a fresh agent continue an approved `refine` session without rereading the conversation.
 
 ## Preconditions
 
@@ -27,7 +27,7 @@ Use this structure:
 
 ## Non-goals and constraints
 
-## Task-split state
+## Refinement state
 
 - Split approved: yes
 - Handoff point: between slices | during slice
@@ -76,7 +76,7 @@ Use this structure:
 
 ## Split execution contract
 
-This is an approved task-split continuation. Load and follow the `task-split` skill's execution contract. Do not create a new split.
+This is an approved `refine` (task-splitting) continuation. Load and follow the `refine` skill's execution contract. Do not create a new split.
 
 - During a slice: resume the active slice immediately.
 - Between slices: start the next slice immediately; it is not yet in progress.
