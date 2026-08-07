@@ -27,7 +27,7 @@ Reach agreement on an ordered sequence of implementation slices.
 - Consider whether a *refactoring slice* is needed before a functional slice.
 - Check that each slice has a *clear boundary* and that later slices can build on earlier ones.
 - If working on a ticket, use its subtasks as hint for functional split.
-- Avoid over-processing trivial changes.
+- Don't force a split if the task is easy enough to be implemented in one slice.
 
 ## 3. Split decision
 
