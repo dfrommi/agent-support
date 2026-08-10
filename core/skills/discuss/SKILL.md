@@ -32,7 +32,7 @@ DO NOT write code, do not write an implementation plan, and do not write files b
 DO NOT silently decide ambiguous behavior, semantics, or architectural direction.
 
 Classify assumptions as `safe`, `risky confirmed`, or `risky unresolved`.
-Try to resolve all `risky unresolved` assumptions and open questions before concluding the discussion.
+Do not conclude the discussion while any assumption is `risky unresolved` — either resolve it with the user, or confirm the user accepts it staying open and list it under Open questions.
 
 ## Summary
 
