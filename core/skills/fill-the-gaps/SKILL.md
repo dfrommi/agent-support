@@ -1,53 +1,79 @@
 ---
 name: fill-the-gaps
-description: >-
-  Continue work started by the user. Use when the user has provided a partial
-  implementation and asks to continue and finalize it.
+description: Complete a user-started implementation without changing the design intent expressed in its code.
 disable-model-invocation: true
 ---
-The user already started the implementation of the task, and it is your job to continue and finalize it.
 
-The provided code was carefully chosen by the user to help you, with clear intent:
+Complete the task end-to-end from the user's partial implementation.
 
-- A core part should be implemented exactly as he envisioned it. And instead of trying to explain in prose, he provided the implementation. Let the code speak.
-- The user also guides you the way on how to continue the implementation, with the help of dummy-methods, comments, and other hints. Follow these hints.
+The partial code is an **intent map**, not a patch boundary. It shows which
+decisions the user has already made and where the agent has freedom to finish
+the work.
 
-## 1. Precondisions
+Use this skill when the user has supplied partial implementation as a guide.
+Do not use it for greenfield work or when no user-authored implementation is
+available.
 
-- Task provided or known from the current session
-- User-provided partial implementation of the task.
-  - try `git diff HEAD` if not specified by the user
+## 1. Read the intent map
 
-**Sanity check**: Check if the provided partial implementation is not related to the task. If not, stop and ask.
+Read the task and the user-provided code before planning.
 
-## 2. Code Understanding
+Treat `git diff HEAD` only as a way to locate candidate code. Do not assume all
+diffed code was written by the user; ask when ownership is unclear.
 
-Read the user-provided code fully and understand its intent and how it relates to the task.
+Classify each relevant code fragment by the intent it carries:
 
-Then assign each line to one of the following categories:
+- **anchor** — a deliberate design decision: for example a business rule,
+  query shape, API shape, control flow, domain model, or explicit comment.
+  Preserve its behavior and shape. Do not change it without user approval.
+- **seam** — incomplete code that reveals a required interaction or contract:
+  for example a dummy getter, stub, placeholder, incomplete branch, or
+  temporary return value. Replace or adjust it as needed while preserving the
+  intent it reveals. Check all usages before changing its shape.
+- **open work** — missing work for which the code expresses no design choice.
+  Choose the implementation freely, following the task and existing project
+  conventions.
 
-- **authorative**:
-  - The user expressed a clear idea on how the task should be implemented. It is his intent to implement it in this specific way, which must be honored highly.
-  - *Modification constraint*: MUST not be changed without explicit user approval.
-- **gap**:
-  - Parts of the user's code that were not important to express the intent and to guide the way. Exception handling, logging, a specific else-branch, etc.
-  - *Modification constraint*: Expected to be filled in by you
-- **mock**:
-  - Dummy methods, properties, or other placeholders to link the authorative parts to the rest or the code, also the one that doesn't exist yet.
-  - *Modification constraint*: Allowed to be changed, but usages MUST be checked first. If the change will cause a modification of the authorative code, it must be discussed with the user first.
+Do not treat an anchor as unfinished merely because you would have designed it
+differently. Stop and ask when the task cannot be completed without changing an
+anchor, or when it is unclear whether code is an anchor or a seam.
 
-## 3. Review
+Done when every required part of the supplied code has an anchor, seam, or open
+work classification.
 
-Review the **authorative** code and check for errors, inconsistencies, and contradictions with the task.
-If you find any, stop and discuss with the user.
+## 2. Trace outward
 
-## 4. Implementation
+For every anchor and seam, trace the code outward through its callers, callees,
+types, persistence, APIs, configuration, and tests as applicable.
 
-Create a plan how to implement the missing parts of the task. Use the provided code as a guide.
-You MUST strictly follow the modification constraints of the classification of the code lines.
+Infer the work needed to make the intended behavior real. Do not stop at the
+explicit stubs or TODOs: implement every layer required to complete the task.
 
-Take the hints the user left for you in the code as strong suggestion. Don't diverge lightly from the user's intent.
-If in dobut, ask the user for clarification.
+This may include error handling, persistence, migrations, API or controller
+code, service wiring, validation, tests, and other supporting code.
 
-Present the plan to the user and ask for approval before starting the implementation.
+Done when the complete path from the user’s intended behavior to its external
+effects is accounted for.
 
+## 3. Plan and implement
+
+Present a plan that names:
+
+1. the anchors that will remain unchanged;
+2. the contracts inferred from each seam;
+3. the open work and supporting layers needed to complete the task.
+
+Ask for approval before implementation.
+
+After approval:
+
+- keep anchors unchanged;
+- implement or adjust seams without violating their inferred contracts;
+- implement all open and supporting work needed for the task;
+- add tests that verify the requested behavior and preserve anchor behavior.
+
+Stop and ask before any change that alters an anchor or a seam’s inferred
+contract.
+
+Done when the task is complete, all required layers are connected, the relevant
+tests pass, and every anchor remains unchanged unless the user approved it.
