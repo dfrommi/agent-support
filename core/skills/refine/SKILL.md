@@ -13,10 +13,9 @@ Reach agreement on an ordered sequence of implementation slices.
 ## 1. Discovery
 
 - Use the current conversation and optional argument as the source of requirements.
-- Gather a deep understanding of the task and its complexity. You must understand enough of the code, dependencies, and user requirements to judge whether a proposed split is safe.
+- End discovery as soon as you can propose a split and run the stop-and-ask checklist below against it; read no further.
 - If you lack a common understanding with the user about the task that can't be resolved from code, stop and suggest the `discuss` skill instead.
 - If a question can be answered by reading local files, inspect the codebase instead of asking.
-- Read only enough context to split safely.
 - Stop and ask if there are unresolved risky assumptions, blocking open questions, unclear acceptance criteria, overwrite conflicts, or a need to add dependencies or change architecture beyond the approved discussion.
 
 ## 2. Task Splitting Guidelines
