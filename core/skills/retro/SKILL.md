@@ -9,93 +9,114 @@ description: >-
 
 ### 1.1 Levels of insight
 
-Insights appear on different levels/altidudes. You have to zoom in and out to find them all.
-If an insights fits into multiple levels, place it in the lowest.
+Use these levels as **discovery lenses**, not as a closed taxonomy. During discovery, collect candidates freely; do not assign them a level yet. The bullets are food for thought, not limits. Extend them with your own ideas.
 
-Don't restrict yourself to the existing bullet-points in the levels when searching for insights, they are just food of thought. Extend them with your own ideas.
+**Level 1: Execution**
 
-**Level 1: Direct feedback**
+- an execution decision, check, or tool-use habit caused avoidable friction
+- validation was missing, too weak, or happened too late
+- a successful execution habit should be preserved
 
-- failed tool calls
-- user corrections
-- repeated mistakes
-- user as a debugger
+**Level 2: Repeatable workflows**
 
-**Level 2: Inefficiencies**
+- a task sequence can be reordered, clarified, documented, or automated
+- a needed source of truth, question, or validation was discovered too late
+- an ambiguity should be resolved consistently in comparable tasks
+- a workflow was rediscovered through exploration that a project-local skill could encode for future sessions
 
-- extensive exploration due to missing knowledge
-- workflows that could have been predefined and documented
-- re-reading the same files multiple times
-- shell quoting friction
-- tool invocation count
+**Level 3: Project system**
 
-**Level 3: Missing agent capabilities**
+- project-local instructions, skills, references, conventions, or scripts are missing, stale, conflicting, or difficult to discover
+- a recurring project task needs a local capability, template, or automation
+- repository structure or tooling makes correct work unnecessarily difficult
 
-- tools that would have made the session faster, cheaper, or more correct
+**Level 4: Reframing and hidden gems**
 
-**Level 4: Hidden Gems**
+- challenge a goal, assumption, or interaction model
+- identify an approach that removes a class of work rather than optimising it
+- transfer a useful pattern from another domain
+- capture a surprising success or failure with wider implications
+- propose a promising hypothesis that needs validation
 
-- what was strange about this session from the outside
-- would a different approach have been more efficient
-- question the entire process
-- aim for the insight no one has had yet
+After scanning every level, make an explicit **wildcard pass**:
 
-### 1.2 Distillation
+- invert a major decision or assumption from the session
+- ask what surprisingly worked, not only what failed
+- ask how a capable outsider would redesign the session from scratch
+- transfer a practice from another domain or workflow
+- look for a change that eliminates a class of work rather than improving it
 
-Reflect **relentlessly** on the current session and extract insights until you can't find more insights.
-When you're done, do it again on different altitudes, zoom in and out. Keep on digging until you find nothing new.
+### 1.2 Workflow-skill extraction check
 
-Only collect, don't judge.
+For every workflow materially rediscovered during the session, explicitly ask:
 
-Each level needs an explicit attempt, not a skim — producing nothing at a level is a valid outcome; skipping a level is not.
+- did the agent have to infer a repeatable sequence, decision rule, file location, command, or validation step?
+- is that knowledge likely to recur in similar project tasks?
+- is it stable enough to encode rather than rediscover?
+- does an existing project-local skill already cover it?
 
-**Distill each insight down to the principle behind it.** Ask what rule, reason, or intent an event reveals, and phrase the insight as that rule — so it applies to future, different occurrences. An insight that only recounts what happened is not yet an insight; keep asking *why* until it states the underlying principle. Test: can you apply it to a situation other than the one that produced it?
+If the first three answers are yes and no existing skill covers it, record a candidate for a new project-local workflow skill. If an existing skill covers it incompletely, record a candidate to extend that skill. Record why when the workflow is unsuitable for a skill.
 
-**Treat user corrections as the highest-value input.** When the user disputes or corrects an insight. It gives you the most significant hint not only on the what, but most importantly on the why. Analyse the user's message carefully and understand the scope it applies to.
+Every listed level, the wildcard pass, and the workflow-skill extraction check needs an explicit attempt. Producing nothing is valid; omitting the attempt is not.
 
-**Insights do not need to be expressible as a file edit.** A valid insight can be a new tool idea, a project-level improvement, a process change you cannot enact yourself, or a capability gap that should be recorded for future planning. Do not discard an insight solely because you cannot reduce it to "edit this file."
+### 1.3 Classification
 
-## 1.3 Reflection Summary
+After discovery, classify each candidate by the narrowest scope of change that would remove its root cause. Classification supports action selection; it does not determine whether an idea is worth considering.
 
-Present the insights to the user in a table:
+If a candidate fits multiple levels, use the lowest numbered level that fully addresses the cause. Use **Novel / cross-cutting** when forcing a level would obscure the insight. Never discard a candidate merely because the current taxonomy lacks a place for it.
+
+### 1.4 Distillation
+
+Reflect **relentlessly** on the current session and extract insights until you cannot find more. Then revisit it from different altitudes, zooming in and out. Stop only when a complete pass produces no new, non-duplicate candidates.
+
+Only collect candidates here; do not decide their relevance or actions yet.
+
+**Distil each candidate down to the principle behind it.** Ask what rule, reason, or intent an event reveals, and phrase the insight as that rule — so it applies to future, different occurrences. An insight that only recounts what happened is not yet an insight; keep asking *why* until it states the underlying principle. Test: can you apply it to a situation other than the one that produced it?
+
+Record the originating evidence beside every candidate: a user message, tool result, file, or observed workflow event. If the candidate is an innovative inference rather than a conclusion directly established by the session, label it as a **hypothesis** and state its premise.
+
+**Treat any user correction — of the work or of the retrospective — as high-value evidence.** Analyse what it reveals about both the immediate mistake and its likely scope.
+
+Insights do not need to be expressible as a file edit. A valid insight can be a new tool idea, a project-level improvement, a process change you cannot enact yourself, or a capability gap that should be recorded for future planning. Do not discard an insight solely because you cannot reduce it to "edit this file."
+
+### 1.5 Candidate Insights
+
+Present the candidates to the user in a table:
 
 - level
 - insight
 - evidence
 
-## 2. Relevancy Check
+## 2. Relevance Check
 
-Each insight must be checked against
+Check every candidate against:
 
-1. Relevancy for future sessions
+1. Relevance for future sessions
 2. Improving on the optimization axes
 
-**Every discard needs a reason.** No insight is dropped on a hand-wave.
-If the claim is, that it's already covevered, prove it by quoting file and wording, verified by `rg`.
+**Every discard needs a reason.** No insight is dropped on a hand-wave. If the claim is that an insight is already covered, prove it with the exact existing wording and file path, located and verified with `rg`.
 
-### 2.1 Future Relevancy
+### 2.1 Future Relevance
 
-Only consider insights that will be useful for future tasks, skip everything that only applies to the current task and will no longer be relevant in future sessions.
-For each insight, ask yourself: **What will future-us need? Is a future session very likely to need this?**.
-If the answer is no, discard it.
+Discard candidates that will only apply to the current task and are unlikely to matter in future sessions. For each candidate, ask: **What will future-us need? Is a future session very likely to need this?** If the answer is no, discard it with that reason.
 
 ### 2.2 Optimization Axes
 
-Each insight must improve at least one of the optimization axes, while not significantly harming the others:
+Each surviving candidate must improve at least one optimization axis without significantly harming the others:
 
 - Efficiency: reach the goal faster, in fewer turns
-- Correctness: avoid mistakes, depend less on user corrections, be better aligned with the user's intent
-- Token Usage: do the job with the smallest possible number of tokens, fewer turns, fewer tokens for tool calls
+- Correctness: avoid mistakes, depend less on user corrections, and better align with the user's intent
+- Token Usage: do the job with the smallest possible number of tokens, fewer turns, and fewer tokens for tool calls
 
-Considerations for when to drop an improvement (due to the optimization axes):
+Consider dropping an improvement when it:
 
-- Leads to high efficiency, but the user needs to correct the outcome significantly
-- Creates perfectly correct results, but the user needs to micro-manage and approve each change
-- The result is 100% correct and efficient, but uses such a high number of tokens that the process is no longer affordable
+- increases efficiency but requires significant user correction
+- creates correct results but requires the user to micro-manage or approve each change
+- is correct and efficient but makes the process unaffordable through excessive token use
 
-## 2.3 Reflection Summary
+### 2.3 Relevance Assessment
 
-Present the relevancy outcome to the user in a table. List all insights, not only the ones that survived the relevancy check. For each insight, list:
+Present the relevance outcome to the user in a table. List all candidates, not only the ones that survived the relevance check. For each candidate, list:
 
 - level
 - insight
@@ -104,31 +125,29 @@ Present the relevancy outcome to the user in a table. List all insights, not onl
 
 ## 3. Derive Actions
 
-For each insight that survived §2, determine next actions.
+For each candidate that survived §2, select its next action and target. Do not present a menu of possible files or leave the placement undecided. Do not modify any file without user approval.
 
-**Act now** — apply the insight in a **project-local** file
+**Recommend now** — select one concrete, **project-local** change in the narrowest authoritative home. These are selection criteria, not a priority order:
 
-1. If the insight is relevant for almost all future sessions and should always be available from the start, suggest adding it to `AGENTS.md`.
-2. If `AGENTS.md` already references a file where the knowledge fits, suggest adding it there.
-3. If it is only relevant for certain tasks or in certain scenarios, suggest creating or updating a skill.
-   - Only project-local skills are allowed to be updated/created (`.agents/skills/<skill_dir>/SKILL.md`). Never touch a skill outside of the project.
-   - If the obvious modification would be in an external skill, highlight and discuss with the user.
-   - Update existing skills if they fit, suggest creating a new skill if they don't.
-   - For new workflow skills, clarify with the user whether they should be model-invocable
-4. If the insight can be solved by a small code change, suggest the proposed change to the user
+- Use `AGENTS.md` only when the knowledge applies to almost all future sessions and must be available from the start.
+- Use a file already referenced by `AGENTS.md` when it is the established home for the relevant module or concern.
+- Use an existing project-local skill when the knowledge applies to that task or scenario. Create a skill only when no existing skill fits.
+  - Only project-local skills may be updated or created (`.agents/skills/<skill_dir>/SKILL.md`). Never modify a skill outside the project.
+  - If the obvious modification would be in an external skill, identify that target and discuss it with the user.
+  - For a new workflow skill, clarify with the user whether it should be model-invocable.
+- Use a small code change when it directly solves the candidate.
 
-- **Plan for later** — If the insight doesn't fall under "Act now", describe it in detail
+Name the selected file and proposed change. Do not list alternatives. If the repository does not provide enough evidence to choose a target, ask the user a focused question. A candidate may require multiple changes only when they are interdependent; name each change, its target, and why one alone is insufficient.
 
-1. If the suggested change is easy, but exceeds the scope of the current projects, describe the change and suggest it for later.
+**Plan for later** — select the owner or system that must act, then describe the concrete change and why it is valuable.
 
-- a globally useful trait, independent of the project, that should always be applied, should be added to the system prompt
-- tuning a tool's schema or documentation to make it more useful for future sessions
-
-1. Everything else describe in detail to plan for later
+- A globally useful trait, independent of the project, belongs in the system prompt.
+- Tuning a tool's schema or documentation belongs with the tool's owner.
+- Describe every other non-local change in enough detail to plan later.
 
 ## 4. Final Summary
 
-Present the final outcome to the user. List all insights, not only the ones that survived previous steps. For each insight, list:
+Present the final outcome to the user. List all candidates, not only the ones that survived previous steps. For each candidate, list:
 
 - level
 - insight
@@ -136,6 +155,6 @@ Present the final outcome to the user. List all insights, not only the ones that
 - discarded (yes/no)
 - reason for discard (if discarded)
 - actionable (yes/no)
-- action to be taken (now for actionable, later for non-actionable)
+- selected action and target (now for actionable, later for non-actionable)
 
 Don't perform any modification without user approval.
