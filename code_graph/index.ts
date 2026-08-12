@@ -7,32 +7,25 @@ export default function codeGraphExtension(pi: ExtensionAPI) {
 		name: "graph",
 		label: "Code Graph",
 		description:
-			"Execute TypeScript code to explore the codebase via a queryable graph. " +
-			"Access symbols, callers, callees, and files through the `db` object. " +
-			"Use terminal methods like .list(), .asTable(), .tree(), .count(), .first(), .summary() to get results. " +
-			"TypeScript/JavaScript only. Automatically indexes the project on first use.",
-		promptSnippet: "Explore the codebase graph: symbols, callers, callees, files",
+			"Query the codebase graph. `db` is pre-bound. Chain methods, end with a terminal. " +
+			"Supports TypeScript, JavaScript, Java, and Rust. Automatically indexes on first use.",
+		promptSnippet: "Query code structure: symbols, callers, callees, impact, paths",
 		promptGuidelines: [
-			"Use graph to find symbols, trace callers/callees, or survey files — prefer a single chain over multiple calls.",
-			"Start broad then refine: db.all().where(s => s.kind === 'class').asTable()",
-			"Use db.all().inPath('src/**/*.ts') to scope to a directory before further filtering.",
-			"For call hierarchy: db.symbol('handleRequest').callers().asTable() or db.symbol('f').callers({ transitive: true }).asTable()",
-			"Use scope.exclude to prune test/lib code during traversal: .callers({ transitive: true, scope: { exclude: ['**/test/**', '**/node_modules/**'] } })",
-			"Explore main code first, then widen scope to include tests only when needed.",
-			"Use .explain() for a single-symbol summary (callers, callees, history, confidence).",
-			"Use .impact() for blast-radius analysis; supports scope: .impact({ scope: { exclude: ['**/test/**'] } })",
-			"Use db.find('partial') for fuzzy name search.",
+			"Write a single comprehensive graph query that answers the question fully. Prefer one well-crafted chain over multiple graph calls — avoid using graph like grep or find.",
+			"Start from db.symbol('name'), db.find('partial'), db.all(), or db.file('path.ts').symbols().",
+			"Traverse: .callers({ transitive: true }) / .callees(...). Add scope: { exclude: ['**/test/**', '**/node_modules/**'] } to prune test/lib code.",
+			"Filter: .where(s => s.kind === 'class'), .exported(), .inPath('src/**/*.ts').",
+			"Terminate with .explain() for one symbol, .impact({ scope }) for blast radius, .pathsTo(target) for call paths, or .asTable() / .tree() / .list().",
 		],
 		parameters: Type.Object({
 			code: Type.String({
 				description:
-					"TypeScript code to execute. `db` is pre-bound. Examples:\n" +
-					'- db.symbol("AuthService").callers().asTable()\n' +
-					'- db.all().where(s => s.kind === "class" && s.exported).asTable()\n' +
-					'- db.file("handler.ts").symbols().callees().tree()\n' +
-					'- db.find("payment").asTable()\n' +
-					"- db.stats()\n" +
-					"Terminals: .list(), .asTable(), .tree(), .count(), .first(), .summary(), .explain()",
+					"TypeScript expression or statements. `db` is pre-bound. Examples:\n" +
+					'• db.symbol("PaymentService").explain()\n' +
+					'• db.symbol("handleLogin").callers({ transitive: true, scope: { exclude: ["**/test/**"] } }).asTable()\n' +
+					'• db.file("auth.ts").symbols().where(s => s.exported).asTable()\n' +
+					'• db.symbol("hashPassword").impact({ scope: { exclude: ["**/test/**"] } })\n' +
+					'• db.changed({ since: "main" }).where(s => s.kind === "class").asTable()',
 			}),
 		}),
 		execute: async (_toolCallId, params) => {
