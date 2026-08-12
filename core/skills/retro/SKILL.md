@@ -5,6 +5,10 @@ description: >-
   instructions and skills from them. Use when the user asks for a "retro" or
   wants to sharpen the agent's instructions based on a session.
 ---
+## Core rule
+
+Report changes, not competence. A successful practice that worked as intended is not an actionable candidate unless it exposed a gap, friction, risk, or missing capability. If nothing needs to change, report no action.
+
 ## 1. Reflection
 
 ### 1.1 Levels of insight
@@ -55,7 +59,7 @@ For every workflow materially rediscovered during the session, explicitly ask:
 - is it stable enough to encode rather than rediscover?
 - does an existing project-local skill already cover it?
 
-If the first three answers are yes and no existing skill covers it, record a candidate for a new project-local workflow skill. If an existing skill covers it incompletely, record a candidate to extend that skill. Record why when the workflow is unsuitable for a skill.
+If the first three answers are yes and no existing skill covers it, record a candidate for a new project-local workflow skill. If an existing skill covers it incompletely, record a candidate to extend that skill. Record why when the workflow is unsuitable for a skill. Do not propose a skill merely because a workflow succeeded without friction or a capability gap.
 
 Every listed level, the wildcard pass, and the workflow-skill extraction check needs an explicit attempt. Producing nothing is valid; omitting the attempt is not.
 
@@ -108,6 +112,8 @@ Each surviving candidate must improve at least one optimization axis without sig
 - Correctness: avoid mistakes, depend less on user corrections, and better align with the user's intent
 - Token Usage: do the job with the smallest possible number of tokens, fewer turns, and fewer tokens for tool calls
 
+Each surviving candidate must identify a concrete change, owner, or capability gap. Discard candidates whose only action is “preserve,” “continue,” or “keep doing”; no change is needed.
+
 Consider dropping an improvement when it:
 
 - increases efficiency but requires significant user correction
@@ -125,7 +131,7 @@ Present the relevance outcome to the user in a table. List all candidates, not o
 
 ## 3. Derive Actions
 
-For each candidate that survived §2, select its next action and target. Do not present a menu of possible files or leave the placement undecided. Do not modify any file without user approval.
+For each candidate that survived §2, select its next action and target. Do not invent a “preserve” action to fill the format: if no concrete action or target can be named, discard the candidate with that reason. Do not present a menu of possible files or leave the placement undecided. Do not modify any file without user approval.
 
 **Recommend now** — select one concrete, **project-local** change in the narrowest authoritative home. These are selection criteria, not a priority order:
 
@@ -156,5 +162,7 @@ Present the final outcome to the user. List all candidates, not only the ones th
 - reason for discard (if discarded)
 - actionable (yes/no)
 - selected action and target (now for actionable, later for non-actionable)
+
+Do not list successful practices as candidates or actions. If no candidate warrants a current or later action, say explicitly: **No actions.**
 
 Don't perform any modification without user approval.
