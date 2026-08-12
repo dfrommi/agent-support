@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Language, Parser } from "web-tree-sitter";
 import { LspClient } from "./lsp/client.ts";
-import * as tsLsp from "./lsp/typescript.ts";
 import * as javaLsp from "./lsp/java.ts";
 import * as rustLsp from "./lsp/rust.ts";
-import { SymbolQuery, FileQuery, gitChangedFiles, type TraversalResolvers } from "./query.ts";
+import { SymbolQuery, FileQuery, type TraversalResolvers } from "./query.ts";
+import { gitChangedFiles, type Graph } from "./graph.ts";
 import { extendStartOverComments } from "./languages/helpers.ts";
 import type { Symbol, SymbolKind, FileInfo } from "./model.ts";
 
@@ -15,6 +15,9 @@ interface LspState {
 	client: LspClient;
 	languageId: string;
 	extensions: string[];
+	/** Last-sent content per file path. Used to skip didChange when content hasn't changed. */
+	fileContent: Map<string, string>;
+	version: number;
 }
 
 const _states = new Map<string, LspState>();
@@ -32,29 +35,26 @@ async function getState(root: string): Promise<LspState> {
 	let extensions: string[];
 
 	switch (primary) {
-		case "java":
-			client = await javaLsp.createJavaServer(root);
-			languageId = javaLsp.languageId;
-			extensions = javaLsp.extensions;
-			break;
 		case "rust":
 			client = await rustLsp.createRustServer(root);
 			languageId = rustLsp.languageId;
 			extensions = rustLsp.extensions;
 			break;
+		case "java":
 		default:
-			client = await tsLsp.createTsServer(root);
-			languageId = tsLsp.languageId;
-			extensions = tsLsp.extensions;
+			client = await javaLsp.createJavaServer(root);
+			languageId = javaLsp.languageId;
+			extensions = javaLsp.extensions;
 	}
 
-	const state: LspState = { client, languageId, extensions };
+	const state: LspState = { client, languageId, extensions, fileContent: new Map(), version: 1 };
 	_states.set(resolved, state);
 	return state;
 }
 
 function scanExtensions(root: string): Record<string, number> {
 	const counts: Record<string, number> = {};
+	const SKIP = new Set(["node_modules", "dist", ".git", "target", "build", ".jdtls-data"]);
 	const stack = [root];
 	while (stack.length > 0) {
 		const dir = stack.pop()!;
@@ -76,10 +76,8 @@ function scanExtensions(root: string): Record<string, number> {
 function dominantLanguage(counts: Record<string, number>): string {
 	const java = counts[".java"] ?? 0;
 	const rs = counts[".rs"] ?? 0;
-	const ts = (counts[".ts"] ?? 0) + (counts[".tsx"] ?? 0) + (counts[".js"] ?? 0) + (counts[".jsx"] ?? 0);
-	if (java > rs && java > ts) return "java";
-	if (rs > java && rs > ts) return "rust";
-	return "typescript";
+	if (java >= rs) return "java";
+	return "rust";
 }
 
 function guessClassName(filePath: string): string | null {
@@ -153,10 +151,6 @@ const _parsers = new Map<string, Parser>();
 async function getParserForFile(filePath: string): Promise<Parser | null> {
 	const ext = path.extname(filePath);
 	const wasmMap: Record<string, string> = {
-		".ts": path.join(BASE, "tree-sitter-typescript.wasm"),
-		".tsx": path.join(BASE, "tree-sitter-tsx.wasm"),
-		".js": path.join(BASE, "tree-sitter-javascript.wasm"),
-		".jsx": path.join(BASE, "tree-sitter-javascript.wasm"),
 		".java": path.join(BASE, "tree-sitter-java.wasm"),
 		".rs": path.join(BASE, "tree-sitter-rust.wasm"),
 	};
@@ -173,14 +167,12 @@ async function getParserForFile(filePath: string): Promise<Parser | null> {
 	return parser;
 }
 
-/** Build a map from start line (1-indexed) to the deepest node at that line. */
 function buildLineNodeMap(root: import("web-tree-sitter").SyntaxNode): Map<number, import("web-tree-sitter").SyntaxNode> {
 	const map = new Map<number, import("web-tree-sitter").SyntaxNode>();
 
 	function walk(node: import("web-tree-sitter").SyntaxNode) {
 		const startLine = node.startPosition.row + 1;
 		const existing = map.get(startLine);
-		// Keep the deeper (smaller) node
 		if (!existing || (node.endPosition.row - node.startPosition.row < existing.endPosition.row - existing.startPosition.row)) {
 			map.set(startLine, node);
 		}
@@ -202,59 +194,57 @@ async function index(root: string): Promise<{
 	const state = await getState(root);
 	const filePaths = walkFiles(root, state.extensions);
 
-	// Fire all didOpen notifications
-	const opens: Promise<void>[] = [];
+	// Sync files with LSP: didOpen for new files, didChange when content differs.
+	let synced = false;
+	state.version++;
+	const syncs: Promise<void>[] = [];
 	for (const f of filePaths) {
 		try {
 			const text = fs.readFileSync(f, "utf8");
-			opens.push(state.client.didOpen(`file://${f}`, text, state.languageId));
+			const prev = state.fileContent.get(f);
+			if (prev === undefined) {
+				syncs.push(state.client.didOpen(`file://${f}`, text, state.languageId));
+				state.fileContent.set(f, text);
+				synced = true;
+			} else if (prev !== text) {
+				syncs.push(state.client.didChange(`file://${f}`, text, state.version));
+				state.fileContent.set(f, text);
+				synced = true;
+			}
 		} catch { /* skip */ }
 	}
-	await Promise.all(opens);
+	await Promise.all(syncs);
 
-	// Give the server time to index
-	await new Promise((r) => setTimeout(r, Math.min(filePaths.length * 15, 5000)));
+	// Wait for indexing only when files were actually synced.
+	if (synced) {
+		await new Promise((r) => setTimeout(r, Math.max(500, Math.min(filePaths.length * 15, 5000))));
+	}
 
 	// Collect workspace symbols
 	let rawSymbols: any[] = [];
+	let projectImported = false;
 	try {
 		rawSymbols = await state.client.workspaceSymbols("");
+		projectImported = rawSymbols.length > 0;
 	} catch { /* fall through */ }
 
-	let projectImported = rawSymbols.length > 0;
+	// Always supplement with per-file documentSymbols — workspace/symbol
+	// often returns only top-level items and misses methods, trait impls, etc.
+	for (const f of filePaths) {
+		try {
+			const docSyms = await state.client.documentSymbols(`file://${f}`);
+			rawSymbols.push(...flattenDocSymbols(docSyms, f));
+		} catch { /* skip */ }
+	}
 
-	// Fallback if workspace/symbol returned nothing
-	if (rawSymbols.length === 0) {
-		projectImported = false;
-		if (filePaths.length > 0) {
-			try {
-				const className = guessClassName(filePaths[0]);
-				if (className) {
-					const verifySymbols = await state.client.workspaceSymbols(className);
-					projectImported = verifySymbols.length > 0;
-				}
-			} catch { /* ignore */ }
-
-			if (!projectImported && state.languageId === "java") {
-				console.warn(
-					`jdtls: Project import may have failed for "${root}". ` +
-						"Cross-file call hierarchy won't work. " +
-						"Ensure standard layout (src/main/java/…) and working build (mvn compile / gradle compileJava).",
-				);
-			} else if (!projectImported) {
-				console.warn(
-					`LSP: workspace/symbol returned nothing for "${root}". ` +
-						"Falling back to per-file symbols — cross-file resolution unavailable.",
-				);
+	if (!projectImported && filePaths.length > 0) {
+		try {
+			const className = guessClassName(filePaths[0]);
+			if (className) {
+				const verifySymbols = await state.client.workspaceSymbols(className);
+				projectImported = verifySymbols.length > 0;
 			}
-		}
-
-		for (const f of filePaths) {
-			try {
-				const docSyms = await state.client.documentSymbols(`file://${f}`);
-				rawSymbols.push(...flattenDocSymbols(docSyms, f));
-			} catch { /* skip */ }
-		}
+		} catch { /* ignore */ }
 	}
 
 	const symbols: LspSymbol[] = [];
@@ -343,17 +333,13 @@ function createLspResolvers(
 	root: string,
 	lsps: LspSymbol[],
 	state: LspState,
-	projectImported: boolean,
 ): TraversalResolvers {
 	const symbolMap = new Map<string, LspSymbol>(lsps.map((s) => [s.id, s]));
 
-	/** Find the best LSP symbol match for a given Symbol (resolves position). */
 	async function resolveLsp(sym: Symbol): Promise<LspSymbol | null> {
-		// Check our indexed symbols first
 		const cached = symbolMap.get(sym.id);
 		if (cached && cached.lspKind > 0) return cached;
 
-		// Try documentSymbol to get precise position
 		const uri = `file://${sym.file}`;
 		try {
 			const docSyms = await state.client.documentSymbols(uri);
@@ -373,7 +359,6 @@ function createLspResolvers(
 		return null;
 	}
 
-	/** Prepare call hierarchy for a symbol, trying progressively lazier position resolution. */
 	async function prepareCallHierarchyItem(sym: Symbol): Promise<any | null> {
 		const lspSym = await resolveLsp(sym);
 		if (!lspSym) return null;
@@ -470,41 +455,35 @@ function createLspResolvers(
 		},
 
 		confidence(): "complete" | "partial" {
-			return projectImported ? "complete" : "partial";
+			return "complete";
 		},
 
 		confidenceNote(): string {
-			if (!projectImported) {
-				return "LSP project import failed — cross-file call hierarchy unavailable. Only intra-file results shown.";
-			}
 			return "";
 		},
 	};
 }
 
-// ── Graph API ───────────────────────────────────────────────
+// ── Public API ──────────────────────────────────────────────
 
-export interface LspGraph {
-	symbol(name: string): SymbolQuery;
-	find(pattern: string): SymbolQuery;
-	file(partialPath: string): FileQuery;
-	all(): SymbolQuery;
-	files(): FileQuery;
-	changed(opts: { since: string }): SymbolQuery;
-	stats(): { files: number; symbols: number; confidence: string };
-	close(): Promise<void>;
-}
-
-export async function createLspGraph(root: string): Promise<LspGraph> {
+/** Create a graph backed by LSP. Throws if the language server cannot import the project. */
+export async function createLspGraph(root: string): Promise<Graph> {
 	const resolved = path.resolve(root);
-
-	// Reuse the LSP client (expensive) but re-index symbols (cheap on warm server)
 	const state = await getState(resolved);
-	const { symbols, files } = await index(resolved);
-	const projectImported = symbols.length > 0;
+	const { symbols, files, projectImported } = await index(resolved);
 
-	// Lazy line extension: tree-sitter parse + comment extension runs once,
-	// only when a terminal actually consumes symbol lines
+	if (!projectImported) {
+		const lang = state.languageId === "java" ? "jdtls" : "rust-analyzer";
+		throw new Error(
+			`${lang} could not import this project. ` +
+			(state.languageId === "java"
+				? "Ensure standard layout (src/main/java/…) and run `mvn compile` or `gradle compileJava`."
+				: "Ensure Cargo.toml is present and run `cargo check`."),
+		);
+	}
+
+	// Lazy line extension: tree-sitter parse runs once, only when a terminal
+	// consumes symbol lines (stats() never triggers it).
 	let _extended = false;
 	const _extendedPromise: Promise<void> = (async () => {
 		const fileGroups = new Map<string, LspSymbol[]>();
@@ -539,10 +518,10 @@ export async function createLspGraph(root: string): Promise<LspGraph> {
 		};
 	}
 
-	const resolvers = createLspResolvers(resolved, symbols, state, projectImported);
+	const resolvers = createLspResolvers(resolved, symbols, state);
 	const allSymbols = new SymbolQuery(extendSource(async () => [...symbols]), resolvers);
 
-	const graph: LspGraph = {
+	return {
 		symbol(name: string) {
 			return new SymbolQuery(
 				extendSource(async () => symbols.filter((s) => s.name === name)),
@@ -588,21 +567,13 @@ export async function createLspGraph(root: string): Promise<LspGraph> {
 			return {
 				files: files.size,
 				symbols: symbols.length,
-				confidence: projectImported ? "complete" : "partial",
 			};
 		},
-
-		async close() {
-			await state.client.shutdown();
-			_states.delete(resolved);
-		},
 	};
-
-	return graph;
 }
 
+/** Shut down all cached LSP clients. Call on session shutdown. */
 export async function resetLspGraph(): Promise<void> {
-	// Close all LSP clients
 	for (const [, state] of _states) {
 		try { await state.client.shutdown(); } catch { /* ignore */ }
 	}

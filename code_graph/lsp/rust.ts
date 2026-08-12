@@ -1,6 +1,12 @@
+import path from "node:path";
 import { LspClient } from "./client.ts";
+import { findBinary } from "./findBinary.ts";
 
-const RUST_ANALYZER = "/opt/homebrew/opt/rustup/bin/rust-analyzer";
+const RUST_ANALYZER = findBinary("rust-analyzer", [
+	"/opt/homebrew/opt/rustup/bin/rust-analyzer",
+	path.join(process.env.HOME ?? "~", ".local/share/nvim/mason/packages/rust-analyzer/rust-analyzer"),
+	"/usr/local/bin/rust-analyzer",
+]);
 
 export async function createRustServer(root: string): Promise<LspClient> {
 	const client = new LspClient(RUST_ANALYZER, [], root);

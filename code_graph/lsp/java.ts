@@ -12,7 +12,7 @@
  *    jdtls requires Java 21+. But the project itself may pin an older JDK
  *    (e.g. via .tool-versions or Gradle toolchain). Since the spawned process
  *    inherits the project cwd, asdf shims would pick up the project's JDK.
- *    We resolve a 21+ home via /usr/libexec/java_home before spawn.
+ *    We resolve a 21+ home before spawn (macOS: java_home, Linux: JAVA_HOME/env).
  *
  * ## 3. Maven/Gradle import must be explicitly enabled
  *    Without initializationOptions.settings.java.import, jdtls opens the
@@ -44,38 +44,50 @@ import { execSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { LspClient } from "./client.ts";
+import { findBinary } from "./findBinary.ts";
 
+const JDTLS_LAUNCHER = findBinary("jdtls", [
+	path.join(os.homedir(), ".local/share/nvim/mason/packages/jdtls/bin/jdtls"),
+]);
+
+// JDTLS_HOME must be the real package directory, not a symlink target.
+// Derive from the fallback path, not the resolved binary (which may be a symlink).
 const JDTLS_HOME = path.join(
 	os.homedir(),
 	".local/share/nvim/mason/packages/jdtls",
 );
-
-const JDTLS_LAUNCHER = path.join(JDTLS_HOME, "bin", "jdtls");
 const LOMBOK = path.join(JDTLS_HOME, "lombok.jar");
+const CONFIG_DIR = process.platform === "darwin" ? "config_mac" : "config_linux";
 
 function dataDir(root: string): string {
 	const hash = crypto.createHash("sha1").update(root).digest("hex").slice(0, 12);
 	return path.join(os.tmpdir(), `jdtls-${hash}`);
 }
 
+function resolveJavaHome(): string {
+	// macOS: use java_home to find Java 21+
+	if (process.platform === "darwin") {
+		try {
+			return execSync("/usr/libexec/java_home -v 21", { encoding: "utf8" }).trim();
+		} catch {
+			try {
+				return execSync("/usr/libexec/java_home", { encoding: "utf8" }).trim();
+			} catch { /* fall through to JAVA_HOME */ }
+		}
+	}
+	// Linux / other: rely on JAVA_HOME env var
+	return process.env.JAVA_HOME ?? "";
+}
+
 export async function createJavaServer(root: string): Promise<LspClient> {
 	const dataDirPath = dataDir(root);
 	const args = [
 		"-data", dataDirPath,
-		"-configuration", path.join(JDTLS_HOME, "config_mac"),
+		"-configuration", path.join(JDTLS_HOME, CONFIG_DIR),
 		"--jvm-arg=-javaagent:" + LOMBOK,
 	];
 
-	// Pitfall #2: jdtls needs Java 21+, project may pin older JDK
-	let javaHome = process.env.JAVA_HOME ?? "";
-	try {
-		javaHome = execSync("/usr/libexec/java_home -v 21", { encoding: "utf8" }).trim();
-	} catch {
-		try {
-			javaHome = execSync("/usr/libexec/java_home", { encoding: "utf8" }).trim();
-		} catch { /* keep fallback */ }
-	}
-
+	const javaHome = resolveJavaHome();
 	const client = new LspClient(JDTLS_LAUNCHER, args, root, { JAVA_HOME: javaHome });
 
 	// Pitfall #3 + #4: Maven/Gradle import + workspaceFolders

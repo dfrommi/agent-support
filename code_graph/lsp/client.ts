@@ -192,4 +192,11 @@ export class LspClient {
 			},
 		});
 	}
+
+	async didChange(uri: string, text: string, version: number): Promise<void> {
+		this.notify("textDocument/didChange", {
+			textDocument: { uri, version },
+			contentChanges: [{ text }],
+		});
+	}
 }

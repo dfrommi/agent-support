@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CallEdge, FileInfo, Symbol } from "./model.ts";
+import { globToRegex, compileExcludeRx, isExcluded } from "./scope.ts";
 
 // ── Resolver strategies (pluggable per backend) ──────────────
 
@@ -44,75 +44,8 @@ export interface TraversalResolvers {
 
 // ── Helpers ─────────────────────────────────────────────────
 
-function walkDir(dir: string): string[] {
-	const results: string[] = [];
-	const stack = [dir];
-	while (stack.length > 0) {
-		const d = stack.pop()!;
-		let entries;
-		try { entries = readdirSync(d); } catch { continue; }
-		for (const name of entries) {
-			const full = path.join(d, name);
-			try {
-				if (statSync(full).isDirectory()) {
-					if (!name.startsWith(".")) stack.push(full);
-				} else {
-					results.push(full);
-				}
-			} catch { /* skip */ }
-		}
-	}
-	return results;
-}
-
-/** Run `git diff --name-only <base>` and return absolute file paths. */
-export function gitChangedFiles(root: string, base: string): string[] {
-	try {
-		const gitRoot = execSync(`git -C "${root}" rev-parse --show-toplevel`, {
-			encoding: "utf8", timeout: 3000,
-		}).trim();
-		const raw = execSync(`git -C "${gitRoot}" diff --name-only ${base}`, {
-			encoding: "utf8", timeout: 5000, maxBuffer: 512 * 1024,
-		});
-		return raw.trim().split("\n").filter(Boolean).map((f) => path.resolve(gitRoot, f));
-	} catch {
-		return [];
-	}
-}
-
-// ── Scope filtering ───────────────────────────────────────
-
-/** Minimal glob-to-regex: supports ** (any depth) and * (within segment). */
-function globToRegex(pattern: string): RegExp {
-	let rx = "";
-	let i = 0;
-	while (i < pattern.length) {
-		if (pattern[i] === "*" && pattern[i + 1] === "*") {
-			if (pattern[i + 2] === "/") { rx += "(?:.*/)?"; i += 3; }
-			else { rx += ".*"; i += 2; }
-		} else if (pattern[i] === "*") {
-			rx += "[^/]*";
-			i++;
-		} else if (".+^$(){}[]|\\".includes(pattern[i])) {
-			rx += "\\" + pattern[i];
-			i++;
-		} else {
-			rx += pattern[i];
-			i++;
-		}
-	}
-	return new RegExp("^" + rx + "$");
-}
-
-/** Compile exclude patterns once, reuse across BFS hops. */
-function compileExcludeRx(exclude: string[] | undefined): RegExp[] {
-	if (!exclude || exclude.length === 0) return [];
-	return exclude.map(globToRegex);
-}
-
-function isExcluded(file: string, rx: RegExp[]): boolean {
-	return rx.length > 0 && rx.some((r) => r.test(file));
-}
+// ── Scope ────────────────────────────────────────────────
+// (globToRegex, compileExcludeRx, isExcluded imported from ./scope.ts)
 
 /** Shared BFS traversal used by callers, callees, and impact. */
 async function bfsTraverse(
@@ -196,9 +129,10 @@ export class SymbolQuery {
 		return this.filter(predicate);
 	}
 
-	/** Limit to exported symbols only. */
-	exported(): SymbolQuery {
-		return this.filter((s) => s.exported);
+	/** Limit to symbols whose file path matches a glob pattern. */
+	inPath(pattern: string): SymbolQuery {
+		const rx = globToRegex(pattern);
+		return this.filter((s) => rx.test(s.file));
 	}
 
 	/** Pick columns for table output. */
@@ -206,12 +140,6 @@ export class SymbolQuery {
 		const q = this.filter(() => true);
 		q._selectColumns = columns;
 		return q;
-	}
-
-	/** Limit to symbols whose file path matches a glob pattern. */
-	inPath(pattern: string): SymbolQuery {
-		const rx = globToRegex(pattern);
-		return this.filter((s) => rx.test(s.file));
 	}
 
 	// ── Traversal ────────────────────────────────────────────
@@ -281,7 +209,7 @@ export class SymbolQuery {
 
 		return new SymbolQuery(async () => {
 			const syms = await prev();
-			const results: { name: string; kind: Symbol["kind"]; file: string; line: number; column: number; exported: boolean }[] = [];
+			const results: { name: string; kind: Symbol["kind"]; file: string; line: number; column: number }[] = [];
 			for (const sym of syms) {
 				const refs = await resolvers.references(sym);
 				for (const r of refs) {
@@ -291,7 +219,6 @@ export class SymbolQuery {
 						file: r.file,
 						line: r.line,
 						column: r.column,
-						exported: false,
 					});
 				}
 			}
@@ -619,7 +546,6 @@ export class SymbolQuery {
 		const kindLabel = sym.parentName ? `${sym.kind} of ${sym.parentName}` : sym.kind;
 		const lines: string[] = [];
 		lines.push(`${sym.name} (${kindLabel}) — ${sym.file}:${sym.line}${sym.endLine ? `-${sym.endLine}` : ""}`);
-		if (sym.exported) lines.push(`  Exported: yes`);
 
 		// Git history — most recent change
 		try {

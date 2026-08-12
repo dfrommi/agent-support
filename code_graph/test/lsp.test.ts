@@ -73,6 +73,25 @@ describe("LSP graph (Java)", () => {
 		});
 	});
 
+	describe("scope filtering", () => {
+		it("should exclude callers by path glob", async () => {
+			const db = await createLspGraph(FIXTURE);
+			// findById is called by findUser (UserService.java) — exclude it
+			const scoped = await db.symbol("findById(String)")
+				.callers({ scope: { exclude: ["**/UserService.java"] } })
+				.list();
+			const names = scoped.map((s) => s.name);
+			assert.ok(!names.some((n) => n.includes("findUser")), "findUser should be excluded");
+		});
+
+		it("should scope impact analysis", async () => {
+			const db = await createLspGraph(FIXTURE);
+			const impact = await db.symbol("findById(String)")
+				.impact({ scope: { exclude: ["**/UserService.java"] } });
+			assert.ok(!impact.includes("UserService"), "UserService should be excluded from impact");
+		});
+	});
+
 	describe("terminals", () => {
 		it("should produce explain output", async () => {
 			const db = await createLspGraph(FIXTURE);
@@ -105,6 +124,16 @@ describe("LSP graph (Java)", () => {
 			assert.ok(summary.includes("class"));
 		});
 
+		it("should find paths between symbols", async () => {
+			const db = await createLspGraph(FIXTURE);
+			// findUser calls findById
+			const path = await db.symbol("findUser(String)").pathsTo(
+				(s) => s.name.includes("findById"),
+			);
+			assert.ok(path.includes("findUser"), "path should start at findUser");
+			assert.ok(path.includes("findById"), "path should end at findById");
+		});
+
 		it("should produce a table", async () => {
 			const db = await createLspGraph(FIXTURE);
 			const table = await db.all().where((s) => s.kind === "class").asTable();
@@ -120,11 +149,70 @@ describe("LSP graph (Java)", () => {
 		});
 	});
 
+	describe("changed", () => {
+		it("should return symbols from files changed since a git ref", async () => {
+			const db = await createLspGraph(FIXTURE);
+			// fixture-java is committed — diff vs HEAD should find no unstaged changes
+			const changed = await db.changed({ since: "HEAD" }).list();
+			assert.ok(Array.isArray(changed), "changed() should return an array");
+		});
+
+		it("should detect unstaged file modifications", async () => {
+			const fs = await import("node:fs");
+			const userServicePath = path.join(FIXTURE, "src/main/java/com/example/UserService.java");
+			const original = fs.readFileSync(userServicePath, "utf8");
+
+			try {
+				// Modify a file (unstaged change)
+				fs.writeFileSync(userServicePath, original + "\n// test comment\n");
+
+				const db = await createLspGraph(FIXTURE);
+				const changed = await db.changed({ since: "HEAD" }).list();
+				const changedFiles = [...new Set(changed.map((s: any) => s.file))];
+				assert.ok(
+					changedFiles.some((f: string) => f.includes("UserService.java")),
+					"UserService.java should appear in changed files",
+				);
+			} finally {
+				fs.writeFileSync(userServicePath, original);
+			}
+		});
+	});
+
+	describe("freshness", () => {
+		it("should pick up file modifications via didChange", async () => {
+			const fs = await import("node:fs");
+			const userServicePath = path.join(FIXTURE, "src/main/java/com/example/UserService.java");
+			const original = fs.readFileSync(userServicePath, "utf8");
+
+			try {
+				// First query: baseline
+				const db1 = await createLspGraph(FIXTURE);
+				const before = await db1.find("ping").list();
+				assert.equal(before.length, 0, "ping should not exist yet");
+
+				// Add a new method
+				const modified = original.replace(
+					"private void auditLog",
+					"public void ping() { return; }\n\n    private void auditLog",
+				);
+				fs.writeFileSync(userServicePath, modified);
+
+				// Second query: should pick up the new method via didChange
+				const db2 = await createLspGraph(FIXTURE);
+				const after = await db2.find("ping").list();
+				assert.equal(after.length, 1, "ping should be found after file modification");
+				assert.equal(after[0].kind, "method");
+			} finally {
+				fs.writeFileSync(userServicePath, original);
+			}
+		});
+	});
+
 	describe("stats", () => {
-		it("should report complete confidence for a well-formed project", async () => {
+		it("should report file and symbol counts for a well-formed project", async () => {
 			const db = await createLspGraph(FIXTURE);
 			const stats = db.stats();
-			assert.equal(stats.confidence, "complete");
 			assert.ok(stats.symbols > 0);
 			assert.ok(stats.files > 0);
 		});

@@ -16,7 +16,7 @@ Examples:
   node cli.ts . 'db.stats()'
   node cli.ts . 'db.find("auth").asTable()'
   node cli.ts . 'db.symbol("handleWebhook").explain()'
-  node cli.ts . 'db.changed({since: "main"}).where(s => s.exported).impact()'
+  node cli.ts . 'db.changed({since: "main"}).where(s => s.kind === "class").asTable()'
 
 Query API:
   db.symbol(name)         Find symbols by exact name
@@ -35,10 +35,9 @@ Query API:
   .callTree({maxDepth})   Hierarchical call tree
   .pathsTo(predicate)     Find call paths between symbols
   .why()                  Git blame history
-  .tests()                Find test files
 
   .filter(fn) / .where(fn)  Filter predicate
-  .exported()             Only exported
+  .inPath(glob)          Filter by file path glob
   .select(columns)        Pick table columns
 
   .list()                 Raw array
@@ -101,7 +100,7 @@ if (mode === "stats") {
 	const db = await createLspGraph(dir);
 	console.timeEnd("Indexed");
 	console.log(db.stats());
-	await db.close();
+	await resetLspGraph();
 	process.exit(0);
 }
 
@@ -111,4 +110,4 @@ const db = await createLspGraph(dir);
 console.timeEnd("Indexed");
 const result = await run(query, db);
 console.log(result);
-await db.close();
+await resetLspGraph();

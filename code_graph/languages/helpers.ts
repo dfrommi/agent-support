@@ -8,10 +8,8 @@ import type { CallEdge, Symbol, SymbolKind } from "../model.ts";
 const BASE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "node_modules/tree-sitter-wasms/out");
 
 export const EXTENSIONS: Record<string, string> = {
-	".ts": path.join(BASE, "tree-sitter-typescript.wasm"),
-	".tsx": path.join(BASE, "tree-sitter-tsx.wasm"),
-	".js": path.join(BASE, "tree-sitter-javascript.wasm"),
-	".jsx": path.join(BASE, "tree-sitter-javascript.wasm"),
+	".java": path.join(BASE, "tree-sitter-java.wasm"),
+	".rs": path.join(BASE, "tree-sitter-rust.wasm"),
 };
 
 // ── Helpers ─────────────────────────────────────────────────

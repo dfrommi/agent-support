@@ -1,8 +1,26 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { indexProject, walkProjectFiles, type IndexResult } from "./indexer.ts";
-import { SymbolQuery, FileQuery, gitChangedFiles, type TraversalResolvers } from "./query.ts";
+import { SymbolQuery, FileQuery, type TraversalResolvers } from "./query.ts";
 import type { Symbol } from "./model.ts";
+
+// ── Git helpers ────────────────────────────────────────────
+
+/** Run `git diff --name-only <base>` and return absolute file paths. */
+export function gitChangedFiles(root: string, base: string): string[] {
+	try {
+		const gitRoot = execSync(`git -C "${root}" rev-parse --show-toplevel`, {
+			encoding: "utf8", timeout: 3000,
+		}).trim();
+		const raw = execSync(`git -C "${gitRoot}" diff --name-only ${base}`, {
+			encoding: "utf8", timeout: 5000, maxBuffer: 512 * 1024,
+		});
+		return raw.trim().split("\n").filter(Boolean).map((f) => path.resolve(gitRoot, f));
+	} catch {
+		return [];
+	}
+}
 
 // ── Tree-sitter TraversalResolvers ──────────────────────────
 
@@ -10,6 +28,7 @@ function createTreeSitterResolvers(result: IndexResult, root: string): Traversal
 	return {
 		projectRoot: root,
 		async callers(symbols: Symbol[]): Promise<Symbol[]> {
+			// Tree-sitter only resolves intra-file calls. Cross-file traversal requires LSP.
 			const ids = new Set(symbols.map((s) => s.id));
 			const callerIds = new Set(
 				result.edges.filter((e) => ids.has(e.calleeId)).map((e) => e.callerId),
@@ -63,8 +82,8 @@ export interface Graph {
 	files(): FileQuery;
 	/** Symbols in files changed since a git ref (e.g. "main", "HEAD~3"). */
 	changed(opts: { since: string }): SymbolQuery;
-	/** Number of indexed files, symbols, and edges. */
-	stats(): { files: number; symbols: number; edges: number };
+	/** Number of indexed files and symbols. */
+	stats(): { files: number; symbols: number };
 }
 
 class GraphImpl implements Graph {
@@ -133,11 +152,10 @@ class GraphImpl implements Graph {
 		}, resolvers);
 	}
 
-	stats(): { files: number; symbols: number; edges: number } {
+	stats(): { files: number; symbols: number } {
 		return {
 			files: this.result.files.size,
 			symbols: this.result.symbolById.size,
-			edges: this.result.edges.length,
 		};
 	}
 }

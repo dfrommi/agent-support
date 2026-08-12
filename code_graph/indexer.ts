@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { Language, Parser, type SyntaxNode } from "web-tree-sitter";
 import type { CallEdge, FileInfo, Symbol } from "./model.ts";
 import type { ExtractionContext } from "./languages/helpers.ts";
-import * as ts from "./languages/typescript.ts";
 import * as java from "./languages/java.ts";
 import * as rust from "./languages/rust.ts";
 
@@ -22,20 +21,6 @@ interface LanguageModule {
 }
 
 const LANGUAGES: LanguageModule[] = [
-	{
-		extensions: [".ts", ".tsx", ".js", ".jsx"],
-		wasm: {
-			".ts": path.join(BASE, "tree-sitter-typescript.wasm"),
-			".tsx": path.join(BASE, "tree-sitter-tsx.wasm"),
-			".js": path.join(BASE, "tree-sitter-javascript.wasm"),
-			".jsx": path.join(BASE, "tree-sitter-javascript.wasm"),
-		},
-		extract(root: SyntaxNode, file: string): ExtractionContext {
-			const ctx: ExtractionContext = { file, symbols: [], edges: [], imports: [], reexports: [] };
-			ts.extractSymbols(root, ctx);
-			return ctx;
-		},
-	},
 	{
 		extensions: [".java"],
 		wasm: {

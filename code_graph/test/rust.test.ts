@@ -14,7 +14,6 @@ describe("rust graph", () => {
 			const db = await createGraph(FIXTURE);
 			const results = await db.symbol("User").where((s) => s.kind === "class").list();
 			assert.equal(results.length, 1);
-			assert.ok(results[0].exported);
 		});
 
 		it("should find Rust functions", async () => {
@@ -22,7 +21,6 @@ describe("rust graph", () => {
 			const results = await db.symbol("format_message").list();
 			assert.equal(results.length, 1);
 			assert.equal(results[0].kind, "function");
-			assert.ok(results[0].exported);
 		});
 
 		it("should find Rust methods", async () => {
@@ -68,9 +66,9 @@ describe("rust graph", () => {
 	});
 
 	describe("filtering", () => {
-		it("should find all exported functions", async () => {
+		it("should find all functions", async () => {
 			const db = await createGraph(FIXTURE);
-			const fns = await db.all().where((s) => s.kind === "function" && s.exported).list();
+			const fns = await db.all().where((s) => s.kind === "function").list();
 			const names = fns.map((s) => s.name);
 			assert.ok(names.includes("format_message"));
 		});

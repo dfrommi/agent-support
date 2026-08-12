@@ -1,39 +1,49 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { createGraph } from "./graph.ts";
+import { createLspGraph } from "./graph-lsp.ts";
+import { resetLspGraph } from "./graph-lsp.ts";
+import type { Graph } from "./graph.ts";
+
+let _graph: Graph | null = null;
 
 export default function codeGraphExtension(pi: ExtensionAPI) {
+	pi.on("session_shutdown", async () => {
+		await resetLspGraph();
+		_graph = null;
+	});
+
 	pi.registerTool({
 		name: "graph",
 		label: "Code Graph",
 		description:
-			"Query the codebase graph. `db` is pre-bound. Chain methods, end with a terminal. " +
-			"Supports TypeScript, JavaScript, Java, and Rust. Automatically indexes on first use.",
-		promptSnippet: "Query code structure: symbols, callers, callees, impact, paths",
+			"Query the codebase graph via LSP. `db` is pre-bound. Chain methods, end with a terminal. " +
+			"Supports Java and Rust. Requires language server on PATH.",
+		promptSnippet: "Query code structure via LSP: symbols, callers, callees, impact, paths",
 		promptGuidelines: [
 			"Write a single comprehensive graph query that answers the question fully. Prefer one well-crafted chain over multiple graph calls — avoid using graph like grep or find.",
-			"Start from db.symbol('name'), db.find('partial'), db.all(), or db.file('path.ts').symbols().",
-			"Traverse: .callers({ transitive: true }) / .callees(...). Add scope: { exclude: ['**/test/**', '**/node_modules/**'] } to prune test/lib code.",
-			"Filter: .where(s => s.kind === 'class'), .exported(), .inPath('src/**/*.ts').",
+			"Start from db.symbol('name'), db.find('partial'), db.all(), or db.file('path.java').symbols().",
+			"Traverse: .callers({ transitive: true }) / .callees(...). Add scope: { exclude: ['**/test/**'] } to prune test code.",
+			"Filter: .where(s => s.kind === 'class'), .inPath('src/main/**/*.java').",
 			"Terminate with .explain() for one symbol, .impact({ scope }) for blast radius, .pathsTo(target) for call paths, or .asTable() / .tree() / .list().",
+			"Java methods include parameter types in names: use db.find('findById') for fuzzy matching, not db.symbol('findById').",
 		],
 		parameters: Type.Object({
 			code: Type.String({
 				description:
 					"TypeScript expression or statements. `db` is pre-bound. Examples:\n" +
-					'• db.symbol("PaymentService").explain()\n' +
-					'• db.symbol("handleLogin").callers({ transitive: true, scope: { exclude: ["**/test/**"] } }).asTable()\n' +
-					'• db.file("auth.ts").symbols().where(s => s.exported).asTable()\n' +
-					'• db.symbol("hashPassword").impact({ scope: { exclude: ["**/test/**"] } })\n' +
+					'• db.symbol("UserService").explain()\n' +
+					'• db.symbol("findUser").callers({ transitive: true, scope: { exclude: ["**/test/**"] } }).asTable()\n' +
+					'• db.file("UserService.java").symbols().where(s => s.kind === "method").asTable()\n' +
+					'• db.symbol("findById").impact({ scope: { exclude: ["**/test/**"] } })\n' +
 					'• db.changed({ since: "main" }).where(s => s.kind === "class").asTable()',
 			}),
 		}),
 		execute: async (_toolCallId, params) => {
 			const cwd = process.cwd();
 			try {
-				const db = await createGraph(cwd);
+				_graph = await createLspGraph(cwd);
+				const db = _graph;
 				const code = (params.code as string).trim();
-				// Single-expression lines get auto-returned; multi-line/statement code uses explicit return
 				const isExpression = !code.includes("\n") && !code.includes(";");
 				const wrapped = isExpression
 					? `return (${code})`
