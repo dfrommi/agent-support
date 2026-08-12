@@ -1,0 +1,14 @@
+{
+  "name": "pi-extension-code-graph",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Queryable code graph for pi — explore symbols, callers, callees, and more",
+  "scripts": {
+    "test": "node --test 'test/*.test.ts'"
+  },
+  "dependencies": {
+    "tree-sitter-wasms": "0.1.13",
+    "web-tree-sitter": "0.25.10"
+  }
+}
