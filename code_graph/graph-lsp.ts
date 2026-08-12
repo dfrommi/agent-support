@@ -4,8 +4,9 @@ import { Language, Parser } from "web-tree-sitter";
 import { LspClient } from "./lsp/client.ts";
 import * as javaLsp from "./lsp/java.ts";
 import * as rustLsp from "./lsp/rust.ts";
-import { SymbolQuery, FileQuery, type TraversalResolvers } from "./query.ts";
-import { gitChangedFiles, type Graph } from "./graph.ts";
+import { type TraversalResolvers } from "./query.ts";
+import { createGraphFromResolvers, type Graph } from "./graph.ts";
+import { indexProject } from "./indexer.ts";
 import { extendStartOverComments } from "./languages/helpers.ts";
 import type { Symbol, SymbolKind, FileInfo } from "./model.ts";
 
@@ -183,18 +184,11 @@ function buildLineNodeMap(root: import("web-tree-sitter").SyntaxNode): Map<numbe
 	return map;
 }
 
-// ── Indexing ────────────────────────────────────────────────
+// ── File syncing ────────────────────────────────────────────
 
-async function index(root: string): Promise<{
-	symbols: LspSymbol[];
-	files: Map<string, FileInfo>;
-	state: LspState;
-	projectImported: boolean;
-}> {
-	const state = await getState(root);
+/** Sync project files with the LSP server. Returns true if any files were sent. */
+async function syncLspFiles(root: string, state: LspState): Promise<boolean> {
 	const filePaths = walkFiles(root, state.extensions);
-
-	// Sync files with LSP: didOpen for new files, didChange when content differs.
 	let synced = false;
 	state.version++;
 	const syncs: Promise<void>[] = [];
@@ -214,11 +208,42 @@ async function index(root: string): Promise<{
 		} catch { /* skip */ }
 	}
 	await Promise.all(syncs);
-
-	// Wait for indexing only when files were actually synced.
 	if (synced) {
 		await new Promise((r) => setTimeout(r, Math.max(500, Math.min(filePaths.length * 15, 5000))));
 	}
+	return synced;
+}
+
+/** Quick probe to check whether the LSP server imported the project successfully. */
+async function probeLsp(state: LspState, filePaths: string[]): Promise<boolean> {
+	try {
+		const raw = await state.client.workspaceSymbols("");
+		if (raw.length > 0) return true;
+	} catch { /* empty query may fail on some servers */ }
+	if (filePaths.length > 0) {
+		try {
+			const className = guessClassName(filePaths[0]);
+			if (className) {
+				const verify = await state.client.workspaceSymbols(className);
+				return verify.length > 0;
+			}
+		} catch { /* ignore */ }
+	}
+	return false;
+}
+
+// ── Indexing ────────────────────────────────────────────────
+
+async function index(root: string): Promise<{
+	symbols: LspSymbol[];
+	files: Map<string, FileInfo>;
+	state: LspState;
+	projectImported: boolean;
+}> {
+	const state = await getState(root);
+	const filePaths = walkFiles(root, state.extensions);
+
+	await syncLspFiles(root, state);
 
 	// Collect workspace symbols
 	let rawSymbols: any[] = [];
@@ -237,14 +262,8 @@ async function index(root: string): Promise<{
 		} catch { /* skip */ }
 	}
 
-	if (!projectImported && filePaths.length > 0) {
-		try {
-			const className = guessClassName(filePaths[0]);
-			if (className) {
-				const verifySymbols = await state.client.workspaceSymbols(className);
-				projectImported = verifySymbols.length > 0;
-			}
-		} catch { /* ignore */ }
+	if (!projectImported) {
+		projectImported = await probeLsp(state, filePaths);
 	}
 
 	const symbols: LspSymbol[] = [];
@@ -519,57 +538,48 @@ export async function createLspGraph(root: string): Promise<Graph> {
 	}
 
 	const resolvers = createLspResolvers(resolved, symbols, state);
-	const allSymbols = new SymbolQuery(extendSource(async () => [...symbols]), resolvers);
 
-	return {
-		symbol(name: string) {
-			return new SymbolQuery(
-				extendSource(async () => symbols.filter((s) => s.name === name)),
-				resolvers,
-			);
-		},
+	return createGraphFromResolvers(symbols, files, resolvers, extendSource);
+}
 
-		find(pattern: string) {
-			const lower = pattern.toLowerCase();
-			return new SymbolQuery(
-				extendSource(async () => symbols.filter((s) => s.name.toLowerCase().includes(lower))),
-				resolvers,
-			);
-		},
+/**
+ * Create a graph using tree-sitter for fast indexing and LSP for accurate
+ * call hierarchy. Throws if the language server cannot import the project.
+ */
+export async function createGraph(root: string): Promise<Graph> {
+	const resolved = path.resolve(root);
 
-		file(partialPath: string) {
-			return new FileQuery(
-				async () => {
-					const matches = [...files.values()].filter(
-						(f) => f.path.includes(partialPath) || f.path.endsWith(partialPath),
-					);
-					return matches;
-				},
-				resolvers,
-			);
-		},
+	// 1. Fast index with tree-sitter
+	const result = await indexProject(resolved);
+	const symbols = [...result.symbolById.values()];
 
-		all() { return allSymbols; },
+	// 2. Start LSP for call hierarchy
+	const state = await getState(resolved);
+	await syncLspFiles(resolved, state);
+	const filePaths = walkFiles(resolved, state.extensions);
+	const alive = await probeLsp(state, filePaths);
 
-		files() {
-			return new FileQuery(async () => [...files.values()], resolvers);
-		},
+	if (!alive) {
+		const lang = state.languageId === "java" ? "jdtls" : "rust-analyzer";
+		throw new Error(
+			`${lang} could not import this project. ` +
+			(state.languageId === "java"
+				? "Ensure standard layout (src/main/java/…) and run `mvn compile` or `gradle compileJava`."
+				: "Ensure Cargo.toml is present and run `cargo check`."),
+		);
+	}
 
-		changed(opts: { since: string }) {
-			return new SymbolQuery(extendSource(async () => {
-				const changedFiles = gitChangedFiles(resolved, opts.since);
-				const changedSet = new Set(changedFiles);
-				return symbols.filter((s) => changedSet.has(s.file));
-			}), resolvers);
-		},
+	// Wrap tree-sitter symbols for LSP resolvers — resolveLsp will
+	// populate lspKind on first call hierarchy request.
+	const lspSymbols: LspSymbol[] = symbols.map((s) => ({
+		...s,
+		uri: `file://${s.file}`,
+		lspKind: 0,
+		selectionRange: { start: { line: s.line - 1, character: s.column - 1 } },
+	}));
+	const resolvers = createLspResolvers(resolved, lspSymbols, state);
 
-		stats() {
-			return {
-				files: files.size,
-				symbols: symbols.length,
-			};
-		},
-	};
+	return createGraphFromResolvers(symbols, result.files, resolvers);
 }
 
 /** Shut down all cached LSP clients. Call on session shutdown. */

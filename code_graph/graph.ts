@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { indexProject, walkProjectFiles, type IndexResult } from "./indexer.ts";
 import { SymbolQuery, FileQuery, type TraversalResolvers } from "./query.ts";
-import type { Symbol } from "./model.ts";
+import type { Symbol, FileInfo } from "./model.ts";
 
 // ── Git helpers ────────────────────────────────────────────
 
@@ -86,78 +86,59 @@ export interface Graph {
 	stats(): { files: number; symbols: number };
 }
 
-class GraphImpl implements Graph {
-	private result: IndexResult;
-	private resolvers: TraversalResolvers;
+/** Build a Graph from pre-indexed symbols, files, and resolvers. */
+export function createGraphFromResolvers(
+	symbols: Symbol[],
+	files: Map<string, FileInfo>,
+	resolvers: TraversalResolvers,
+	wrapSource?: <S>(source: () => Promise<S[]>) => () => Promise<S[]>,
+): Graph {
+	const w = wrapSource ?? (<S>(s: () => Promise<S[]>) => s);
+	const allSymbols = new SymbolQuery(w(async () => [...symbols]), resolvers);
 
-	constructor(result: IndexResult, root: string) {
-		this.result = result;
-		this.resolvers = createTreeSitterResolvers(result, root);
-	}
+	return {
+		symbol(name: string) {
+			return new SymbolQuery(
+				w(async () => symbols.filter((s) => s.name === name)),
+				resolvers,
+			);
+		},
 
-	symbol(name: string): SymbolQuery {
-		return new SymbolQuery(
-			async () => {
-				const matches: Symbol[] = [];
-				for (const sym of this.result.symbolById.values()) {
-					if (sym.name === name) matches.push(sym);
-				}
-				return matches;
-			},
-			this.resolvers,
-		);
-	}
+		find(pattern: string) {
+			const lower = pattern.toLowerCase();
+			return new SymbolQuery(
+				w(async () => symbols.filter((s) => s.name.toLowerCase().includes(lower))),
+				resolvers,
+			);
+		},
 
-	find(pattern: string): SymbolQuery {
-		const lower = pattern.toLowerCase();
-		return new SymbolQuery(
-			async () => {
-				const matches: Symbol[] = [];
-				for (const sym of this.result.symbolById.values()) {
-					if (sym.name.toLowerCase().includes(lower)) matches.push(sym);
-				}
-				return matches;
-			},
-			this.resolvers,
-		);
-	}
+		file(partialPath: string) {
+			return new FileQuery(
+				async () => [...files.values()].filter(
+					(f) => f.path.includes(partialPath) || f.path.endsWith(partialPath),
+				),
+				resolvers,
+			);
+		},
 
-	file(partialPath: string): FileQuery {
-		const fileInfos = [...this.result.files.values()];
-		return new FileQuery(
-			async () => fileInfos.filter((f) => f.path.endsWith(partialPath) || f.path.includes(partialPath)),
-			this.resolvers,
-		);
-	}
+		all() { return allSymbols; },
 
-	all(): SymbolQuery {
-		return new SymbolQuery(async () => [...this.result.symbolById.values()], this.resolvers);
-	}
+		files() {
+			return new FileQuery(async () => [...files.values()], resolvers);
+		},
 
-	files(): FileQuery {
-		const all = [...this.result.files.values()];
-		return new FileQuery(async () => all, this.resolvers);
-	}
+		changed(opts: { since: string }) {
+			return new SymbolQuery(w(async () => {
+				const changedFiles = gitChangedFiles(resolvers.projectRoot, opts.since);
+				const changedSet = new Set(changedFiles);
+				return symbols.filter((s) => changedSet.has(s.file));
+			}), resolvers);
+		},
 
-	changed(opts: { since: string }): SymbolQuery {
-		const resolvers = this.resolvers;
-		return new SymbolQuery(async () => {
-			const changedFiles = gitChangedFiles(resolvers.projectRoot, opts.since);
-			const changedSet = new Set(changedFiles);
-			const matches: Symbol[] = [];
-			for (const sym of this.result.symbolById.values()) {
-				if (changedSet.has(sym.file)) matches.push(sym);
-			}
-			return matches;
-		}, resolvers);
-	}
-
-	stats(): { files: number; symbols: number } {
-		return {
-			files: this.result.files.size,
-			symbols: this.result.symbolById.size,
-		};
-	}
+		stats() {
+			return { files: files.size, symbols: symbols.length };
+		},
+	};
 }
 
 // ── Factory ─────────────────────────────────────────────────
@@ -192,7 +173,9 @@ export async function createGraph(root: string): Promise<Graph> {
 	}
 
 	const result = await indexProject(resolved);
-	const graph = new GraphImpl(result, resolved);
+	const symbols = [...result.symbolById.values()];
+	const resolvers = createTreeSitterResolvers(result, resolved);
+	const graph = createGraphFromResolvers(symbols, result.files, resolvers);
 	_graphs.set(resolved, { graph, mtimes: currentMtimes });
 	return graph;
 }

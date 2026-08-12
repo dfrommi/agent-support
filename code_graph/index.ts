@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { createLspGraph } from "./graph-lsp.ts";
-import { resetLspGraph } from "./graph-lsp.ts";
+import { createGraph, resetLspGraph } from "./graph-lsp.ts";
 import type { Graph } from "./graph.ts";
 
 let _graph: Graph | null = null;
@@ -41,7 +40,7 @@ export default function codeGraphExtension(pi: ExtensionAPI) {
 		execute: async (_toolCallId, params) => {
 			const cwd = process.cwd();
 			try {
-				_graph = await createLspGraph(cwd);
+				_graph = await createGraph(cwd);
 				const db = _graph;
 				const code = (params.code as string).trim();
 				const isExpression = !code.includes("\n") && !code.includes(";");

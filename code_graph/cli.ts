@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createLspGraph } from "./graph-lsp.ts";
+import { createGraph, resetLspGraph } from "./graph-lsp.ts";
 
 const args = process.argv.slice(2);
 
@@ -56,7 +56,7 @@ if (!dir) { console.log("Usage: node cli.ts <directory> [query|--stats]"); proce
 
 const mode = args.includes("--stats") ? "stats" : "query";
 
-async function run(code: string, db: Awaited<ReturnType<typeof createLspGraph>>) {
+async function run(code: string, db: Awaited<ReturnType<typeof createGraph>>) {
 	try {
 		const isExpression = !code.includes("\n") && !code.includes(";");
 		const wrapped = isExpression
@@ -97,7 +97,7 @@ function formatOutput(value: unknown): string {
 
 if (mode === "stats") {
 	console.time("Indexed");
-	const db = await createLspGraph(dir);
+	const db = await createGraph(dir);
 	console.timeEnd("Indexed");
 	console.log(db.stats());
 	await resetLspGraph();
@@ -106,7 +106,7 @@ if (mode === "stats") {
 
 const query = args.slice(1).join(" ");
 console.time("Indexed");
-const db = await createLspGraph(dir);
+const db = await createGraph(dir);
 console.timeEnd("Indexed");
 const result = await run(query, db);
 console.log(result);

@@ -384,14 +384,6 @@ export class SymbolQuery {
 
 		while (frontier.length > 0 && depth < maxDepth && foundPaths.length === 0) {
 			const nextFrontier: PathNode[] = [];
-			// Batch all frontier symbols for a single resolver call
-			const frontierSyms = frontier.map((n) => n.sym);
-			const nextSyms = await traverse.call(this._resolvers, frontierSyms);
-
-			// Build a lookup from source symbol ID to its next symbols
-			// Since the resolver returns flat results, we need to re-derive which source produced each result.
-			// For simplicity, resolve individually when the frontier is small; batch for large frontiers.
-			// Actually, let's resolve per-source for correctness:
 
 			for (const node of frontier) {
 				let nextBatch: Symbol[];
