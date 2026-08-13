@@ -4,6 +4,7 @@ description: >-
   Reflects on a completed session, extracts insights, and improves the agent's
   instructions and skills from them. Use when the user asks for a "retro" or
   wants to sharpen the agent's instructions based on a session.
+disable-model-invocation: true
 ---
 ## Core rule
 
