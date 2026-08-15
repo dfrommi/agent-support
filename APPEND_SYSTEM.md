@@ -23,3 +23,10 @@ Default to checking with me rather than deciding, except for the most trivial ca
 - Never emit raw output directly from potentially verbose commands such as `gradle`, `cargo` or `npm/node` unless. Use filtered output or temporary files instead.
 - Prefer quiet/plain flags.
 - Run only the tests you touched first; expand to the full suite after focused tests pass and when the change warrants it.
+
+## Environment and tooling
+
+- You run inside of Wezterm. Use `wezterm cli` to open new tabs, panes, or windows.
+- Use the `pi` cli when asked to spawn independent subagents:
+  - `pi -p "the prompt"` executes the prompt and returns the output
+  - add `--no-session` if the session is disposable and does not need to be tracked
