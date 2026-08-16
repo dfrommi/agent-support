@@ -25,7 +25,7 @@ pip install "git+https://github.com/teng-lin/notebooklm-py@${LATEST_TAG}"
 
 ⚠️ **DO NOT install from main branch** (`pip install git+https://github.com/teng-lin/notebooklm-py`). The main branch may contain unreleased/unstable changes. Always use PyPI or a specific release tag, unless you are testing unreleased features.
 
-After installation, install the Claude Code skill:
+After installation, install the skill:
 ```bash
 notebooklm skill install
 ```
