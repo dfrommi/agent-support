@@ -17,19 +17,21 @@ export default function codelinExtension(pi: ExtensionAPI) {
 		label: "Code",
 		description:
 			"Return line-numbered source and call relationships from a local code index. " +
-			"Accepts a symbol name, a file path, or a natural-language question. " +
-			"Returns the verbatim, line-numbered code (Read-equivalent) plus who calls it and what it affects — use instead of grep/read to find and read code.",
-		promptSnippet: "Find and read code by symbol, file, or question — returns line-numbered source + callers/callees/impact",
+			"Query with a symbol name to get its body plus callers, callees, and impact in one call — prefer this over rg+read whenever you know the name. " +
+			"Also reads a file by path, or finds the call path between two symbols (static calls only). " +
+			"Line numbers locate code; re-read the exact range before editing.",
+		promptSnippet: "Look up a symbol's source + callers/callees/impact in one call (use for any known symbol name), or read a file by path",
 		promptGuidelines: [
-			"Use code instead of grep or read to find and read code: it returns the verbatim line-numbered source plus callers, callees, and blast radius in one call.",
-			"Query code with a symbol name (e.g. 'findUser'), a file path (e.g. 'src/service.ts'), or a question (e.g. 'how does auth work').",
-			"Treat code's returned source as already read and use its line numbers to edit; do not re-read the same file afterwards.",
-			"Fall back to grep/read only for what code does not index (configs, docs, build files).",
+			"If you know a symbol's name — from a file you read, an rg hit, or a doc — use code(name) instead of rg-then-read. e.g. code('plan_for_home') returns the body plus callers, callees, and impact in one call; rg returns only the text line. Don't default to rg when you have a name.",
+			"For 'who calls X' or 'what does X call', query code('X') and read its Called-by / Calls lists. Do not reconstruct these by hand from rg hits.",
+			"code('A B') finds the static call path between two known symbols (direct/static calls only — event-bus/subscribe wiring is not modeled).",
+			"Use rg for literal strings, regex, all-occurrence search, unindexed files, and discovering symbol names when you don't yet know them — then switch to code once you have a name.",
+			"code's output is for understanding only. Before editing, re-read the exact range with read(path, offset, limit) using the returned file:line numbers.",
 		],
 		parameters: Type.Object({
 			query: Type.String({
 				description:
-					"Symbol name, file path, or natural-language question. Examples: 'findUser', 'src/service.ts', 'how does login work'.",
+					"Symbol name (e.g. 'findUser'), file path (e.g. 'src/service.ts'), or two symbols for a call path (e.g. 'run findUser').",
 			}),
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {

@@ -1,6 +1,6 @@
 # codelin
 
-A pi extension that replaces `grep`/`find`/`read` for finding and reading code. One tool — **`code`** — returns the *verbatim, line-numbered source* you actually need, plus who calls it and what it affects, from a local code index.
+A pi extension that replaces `rg`/`fd` for finding code. One tool — **`code`** — returns the *verbatim, line-numbered source* you actually need, plus who calls it and what it affects, from a local code index. Line numbers locate and cite code; re-read the exact range before editing.
 
 Built on [`@colbymchenry/codegraph`](https://www.npmjs.com/package/@colbymchenry/codegraph): 30+ languages, no language server, index built once and kept fresh by a file watcher.
 
@@ -8,9 +8,8 @@ Built on [`@colbymchenry/codegraph`](https://www.npmjs.com/package/@colbymchenry
 
 ```
 code("findUser")                # symbol → its source + callers/callees/impact
-code("src/service.ts")          # file → Read-parity source + dependents
-code("how does auth work?")     # question → relevant symbols with source
-code("run findUser")            # two symbols → the call path between them
+code("src/service.ts")          # file → line-numbered source + dependents
+code("run findUser")            # two symbols → call path (direct/static calls)
 code("some_literal_token")      # no symbol/file match → literal text search (rg)
 ```
 
@@ -33,11 +32,17 @@ Called by ← run (src/main.ts:3)
 Impact: 2 dependent(s) across 1 file(s)
 ```
 
-Line numbers are **Read-parity** (`<n>\t<line>`, no padding), so the agent can cite and edit from the result without re-reading the file. Containers (classes/structs/…) return a member outline instead of their full body; small containers with no indexed members return their own source.
+Line numbers use the form `<n>\t<line>` (no padding) so the agent can locate and cite code. They are for understanding — before editing, re-read the relevant range with `read(path, offset, limit)`. Containers (classes/structs/…) return a member outline instead of their full body; small containers with no indexed members return their own source.
 
-## Why it replaces grep, not just supplements it
+## Why it replaces rg, not just supplements it
 
-grep returns *lines that match*. `code` returns *the code*, already read and line-numbered, with the surrounding structure folded in — one call instead of a grep + read loop. The literal-text fallback (`rg` under the hood) covers the cases the graph doesn't index.
+rg returns *lines that match*. `code` returns *the code*, line-numbered, with the surrounding structure folded in — one call instead of an rg + read loop. The literal-text fallback (`rg` under the hood) covers the cases the graph doesn't index.
+
+## Natural-language queries (experimental planner disabled by default)
+
+`code` accepts prose too — `code("who calls plan_for_home")` or `code("device state module")` — resolved by segment-name matching with suffix stemming (no model required).
+
+An experimental on-device planner (`nl/`, Apple FoundationModels) can sharpen prose selection, but it is **disabled by default**: it needs macOS 26 + Apple Silicon and adds seconds of latency for marginal benefit over the deterministic matcher. To experiment, build `nl/` and set `CODELIN_NL_ENABLED=1` (see `nl/README.md`). Flow questions like "how does X reach Y" are limited to the static call graph and won't see runtime event-bus wiring either way.
 
 ## Requirements
 
@@ -48,3 +53,7 @@ Node ≥ 22.5 (`node:sqlite`). The first use builds `.codegraph/` in the project
 ```bash
 npm test    # node --test, no test framework dependency
 ```
+
+## Development
+
+See [`DEVELOPMENT.md`](./DEVELOPMENT.md) — architecture, query-dispatch order, key tradeoffs, the four experimental runs that shaped the tool, and the gotchas that cost time (codegraph `getSegmentMatches` semantics, the disabled NL planner, stemming, etc.).

@@ -119,25 +119,123 @@ async function renderSymbol(cg: CgInstance, node: CgNode, withImpact: boolean): 
 	return parts.join("\n");
 }
 
+function segmentSearch(cg: CgInstance, words: string[]): CgNode[] {
+	const out: CgNode[] = [];
+	for (const m of cg.getSegmentMatches(words, 6)) {
+		for (const n of cg.getNodesByName(m.name)) out.push(n);
+	}
+	return out.filter((n) => !NON_SYMBOL_KINDS.has(n.kind));
+}
+
 function searchSymbols(cg: CgInstance, query: string): CgNode[] {
 	const exact = cg.getNodesByName(query).filter((n) => !NON_SYMBOL_KINDS.has(n.kind));
 	if (exact.length > 0) return exact;
 
-	const hits = cg.searchNodes(query, { limit: 10 })
+	const words = query.split(/[^A-Za-z0-9_]+/).filter((w) => w.length >= 2);
+
+	// Natural-language queries (≥2 words): map prose words onto the repo's own
+	// symbol names via segment co-occurrence. This runs BEFORE the FTS text
+	// search because FTS prefix-matches each prose token across
+	// names/signatures/docstrings (e.g. "data" matches DataFrame methods) and a
+	// non-empty result would otherwise mask these better, name-derived matches.
+	// recallWords adds stemmed forms ("planning" → "plan") to the segment lookup.
+	if (words.length >= 2) return segmentSearch(cg, recallWords(query));
+
+	// Single-token symbol-ish query: fuzzy text search.
+	return cg.searchNodes(query, { limit: 10 })
 		.map((h) => h.node)
 		.filter((n) => !NON_SYMBOL_KINDS.has(n.kind));
-	if (hits.length > 0) return hits;
+}
 
-	// Natural-language query: map prose words onto the repo's own symbol names.
-	const words = query.split(/[^A-Za-z0-9_]+/).filter((w) => w.length >= 2);
-	if (words.length >= 2) {
-		const out: CgNode[] = [];
-		for (const m of cg.getSegmentMatches(words, 6)) {
-			for (const n of cg.getNodesByName(m.name)) out.push(n);
-		}
-		if (out.length > 0) return out.filter((n) => !NON_SYMBOL_KINDS.has(n.kind));
+/** Strip a common inflectional suffix, then collapse a doubled consonant. */
+function stemWord(w: string): string {
+	let out = w;
+	let stripped = false;
+	if (out.endsWith("ing") && out.length >= 7) { out = out.slice(0, -3); stripped = true; }
+	else if (out.endsWith("ed") && out.length >= 6) { out = out.slice(0, -2); stripped = true; }
+	else if (out.endsWith("es") && out.length >= 6) { out = out.slice(0, -2); stripped = true; }
+	else if (out.endsWith("s") && out.length >= 5 && !out.endsWith("ss")) { out = out.slice(0, -1); stripped = true; }
+	// planning → plann → plan, running → runn → run (only after a suffix strip)
+	if (stripped && out.length >= 3) {
+		const last = out[out.length - 1];
+		if (last === out[out.length - 2] && !/[aeiou]/.test(last)) out = out.slice(0, -1);
 	}
-	return [];
+	return out;
+}
+
+/** Prose words plus their stemmed forms, for segment-based recall. */
+export function recallWords(query: string): string[] {
+	const words = query.split(/[^A-Za-z0-9_]+/).map((w) => w.toLowerCase()).filter((w) => w.length >= 2);
+	const out = new Set<string>();
+	for (const w of words) {
+		out.add(w);
+		const stem = stemWord(w);
+		if (stem !== w && stem.length >= 3) out.add(stem);
+	}
+	return [...out];
+}
+
+/** Broad recall for the planner: segment co-occurrence + FTS, deduped and capped. */
+function buildCandidates(cg: CgInstance, query: string): CgNode[] {
+	const out: CgNode[] = [];
+	for (const m of cg.getSegmentMatches(recallWords(query), 24)) {
+		for (const n of cg.getNodesByName(m.name)) out.push(n);
+	}
+	for (const h of cg.searchNodes(query, { limit: 15 })) out.push(h.node);
+	return dedupe(out).filter((n) => !NON_SYMBOL_KINDS.has(n.kind)).slice(0, 40);
+}
+
+/** Look up exact symbol names selected by the planner. */
+function nodesByName(cg: CgInstance, names: string[]): CgNode[] {
+	const out: CgNode[] = [];
+	for (const name of names) {
+		for (const n of cg.getNodesByName(name)) {
+			if (!NON_SYMBOL_KINDS.has(n.kind)) out.push(n);
+		}
+	}
+	return dedupe(out);
+}
+
+/** The model sometimes echoes the whole `name (kind)` line — keep only the name. */
+function parseSelectedNames(selected: string): string[] {
+	return selected.split(",").map((s) => s.replace(/\s*\([^)]*\)\s*$/, "").trim()).filter(Boolean);
+}
+
+function plannerPrompt(query: string, candidates: CgNode[]): string {
+	const list = candidates.map((n) => `- ${n.name} (${n.kind})`).join("\n");
+	return `${query}\nCandidate symbols:\n${list}`;
+}
+
+type QueryPlanIntent = "symbol" | "path" | "none";
+type QueryPlan = { intent: QueryPlanIntent; selected: string; reasoning: string };
+
+const NL_INTENTS: ReadonlySet<string> = new Set(["symbol", "path", "none"]);
+
+/** Ask the optional on-device planner (Apple FoundationModels) to pick symbols. */
+function queryPlan(prompt: string): QueryPlan | null {
+	const bin = process.env.CODELIN_NL_QUERY?.trim() || "nl-query";
+	let raw: string;
+	try {
+		raw = execFileSync(bin, ["--json", prompt], {
+			encoding: "utf8",
+			maxBuffer: 64 * 1024,
+			timeout: 10000,
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+	} catch {
+		return null;
+	}
+	try {
+		const obj = JSON.parse(raw) as Record<string, unknown>;
+		if (typeof obj.intent !== "string" || !NL_INTENTS.has(obj.intent)) return null;
+		return {
+			intent: obj.intent as QueryPlanIntent,
+			selected: typeof obj.selected === "string" ? obj.selected : "",
+			reasoning: typeof obj.reasoning === "string" ? obj.reasoning : "",
+		};
+	} catch {
+		return null;
+	}
 }
 
 function dedupe(nodes: CgNode[]): CgNode[] {
@@ -199,7 +297,7 @@ function renderFile(cg: CgInstance, filePath: string, root: string): string {
 	return out.join("\n");
 }
 
-function grepFallback(root: string, query: string): string {
+function rgFallback(root: string, query: string): string {
 	let raw: string;
 	try {
 		raw = execFileSync(
@@ -207,21 +305,8 @@ function grepFallback(root: string, query: string): string {
 			["--line-number", "--no-heading", "--color", "never", "--fixed-strings", "--max-count", "100", "--", query, root],
 			{ encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 8000 },
 		);
-	} catch (e) {
-		const err = e as NodeJS.ErrnoException;
-		if (err.code === "ENOENT") {
-			try {
-				raw = execFileSync(
-					"grep",
-					["-rnIF", "--", query, root],
-					{ encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 8000 },
-				);
-			} catch {
-				return "(no matches)";
-			}
-		} else {
-			return "(no matches)"; // rg exits 1 on zero matches
-		}
+	} catch {
+		return "(no matches)"; // rg missing (ENOENT) or exits 1 on zero matches
 	}
 
 	const lines = raw.trimEnd().split("\n").filter(Boolean).slice(0, 200);
@@ -261,7 +346,10 @@ async function renderTrace(cg: CgInstance, from: CgNode, to: CgNode): Promise<st
 	const edgeKinds = ["calls", "references", "instantiates"];
 	const path = cg.findPath(from.id, to.id, edgeKinds) ?? cg.findPath(to.id, from.id, edgeKinds);
 	if (!path || path.length < 2) {
-		return `No call path found between ${from.name} (${from.filePath}:${from.startLine}) and ${to.name} (${to.filePath}:${to.startLine}).`;
+		// No static path — common in event-driven code (subscribe/emit wiring isn't
+		// in the call graph). Still return the endpoints so the answer isn't a dead end.
+		const note = `No static call path between ${from.name} (${from.filePath}:${from.startLine}) and ${to.name} (${to.filePath}:${to.startLine}) — the wiring may be runtime (event bus / subscribe).`;
+		return capOutput([note, "", await renderSymbol(cg, from, false), "", await renderSymbol(cg, to, false)].join("\n"));
 	}
 
 	const hops = path.map((h) => `${h.node.name} (${h.node.filePath}:${h.node.startLine})`);
@@ -279,6 +367,29 @@ function capOutput(text: string): string {
 	return safe + `\n\n… (output truncated to budget; re-query with a more specific name for the remainder)`;
 }
 
+async function renderSymbols(cg: CgInstance, symbols: CgNode[]): Promise<string> {
+	const shown = symbols.slice(0, MAX_SYMBOLS);
+	const sections: string[] = [];
+	for (let i = 0; i < shown.length; i++) {
+		sections.push(await renderSymbol(cg, shown[i], i === 0));
+	}
+	const head = symbols.length > MAX_SYMBOLS
+		? `Found ${symbols.length} symbols; showing ${shown.length}.`
+		: `Found ${symbols.length} symbol(s).`;
+	return capOutput([head, "", sections.join("\n\n---\n\n")].join("\n"));
+}
+
+async function renderFileQuery(cg: CgInstance, q: string, root: string): Promise<string | null> {
+	const files = findFiles(cg, q);
+	if (files.length === 1) return capOutput(renderFile(cg, files[0], root));
+	if (files.length > 1) {
+		const listed = files.slice(0, 20).map((f) => `- ${f}`).join("\n");
+		const more = files.length > 20 ? `\n- … +${files.length - 20} more` : "";
+		return `"${q}" matches ${files.length} files — narrow the path:\n${listed}${more}`;
+	}
+	return null;
+}
+
 /**
  * One entry point for finding and reading code. Resolves a query to symbols
  * (with source + call trail), a file (Read-parity), or a literal text match.
@@ -291,31 +402,35 @@ export async function explore(root: string, query: string): Promise<string> {
 	const flow = extractFlowTargets(cg, q);
 	if (flow) return await renderTrace(cg, flow[0], flow[1]);
 
-	const symbols = dedupe(searchSymbols(cg, q));
-	if (symbols.length > 0) {
-		const shown = symbols.slice(0, MAX_SYMBOLS);
-		const sections: string[] = [];
-		for (let i = 0; i < shown.length; i++) {
-			sections.push(await renderSymbol(cg, shown[i], i === 0));
+	// Optional on-device query planner (Apple FoundationModels), DISABLED by
+	// default — opt in with CODELIN_NL_ENABLED=1 and a built nl-query binary.
+	// Only prose is sent; symbol/file/literal fast-paths stay deterministic.
+	if (/\s/.test(q) && process.env.CODELIN_NL_ENABLED === "1") {
+		const candidates = buildCandidates(cg, q);
+		if (candidates.length > 0) {
+			const plan = queryPlan(plannerPrompt(q, candidates));
+			if (plan?.selected) {
+				const selected = nodesByName(cg, parseSelectedNames(plan.selected));
+				if (selected.length >= 2 && plan.intent === "path") {
+					return await renderTrace(cg, selected[0], selected[1]);
+				}
+				if (selected.length > 0) {
+					return await renderSymbols(cg, selected);
+				}
+			}
 		}
-		const head = symbols.length > MAX_SYMBOLS
-			? `Found ${symbols.length} symbols; showing ${shown.length}.`
-			: `Found ${symbols.length} symbol(s).`;
-		return capOutput([head, "", sections.join("\n\n---\n\n")].join("\n"));
 	}
 
-	const files = findFiles(cg, q);
-	if (files.length === 1) return capOutput(renderFile(cg, files[0], root));
-	if (files.length > 1) {
-		const listed = files.slice(0, 20).map((f) => `- ${f}`).join("\n");
-		const more = files.length > 20 ? `\n- … +${files.length - 20} more` : "";
-		return `"${q}" matches ${files.length} files — narrow the path:\n${listed}${more}`;
-	}
+	const symbols = dedupe(searchSymbols(cg, q));
+	if (symbols.length > 0) return await renderSymbols(cg, symbols);
+
+	const fileOut = await renderFileQuery(cg, q, root);
+	if (fileOut) return fileOut;
 
 	// No symbol or file: fall back to a literal text search (single tokens only —
 	// a prose question that matched nothing is better answered with a symbol name).
 	if (!/\s/.test(q)) {
-		return grepFallback(root, q);
+		return rgFallback(root, q);
 	}
 	return `No indexed symbol or file matches "${q}". Try a symbol name, file path, or a single literal term.`;
 }
