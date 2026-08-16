@@ -73,24 +73,22 @@ YouTube search returns results by relevance by default. If the user asks to sort
 
 ## Processing the output
 
-Pipe the yt-dlp output through the bundled formatting script:
+Format the `yt-dlp` JSON output into a markdown table directly:
 
 ```bash
-yt-dlp "ytsearchN:QUERY" --dump-json --no-download --no-playlist 2>/dev/null \
-  | python3 ~/.claude/skills/youtube-search/scripts/format_results.py \
-    --max COUNT --query "QUERY" --filters "Showing results under 10 minutes."
+yt-dlp "ytsearchN:QUERY" --dump-json --no-download --no-playlist 2>/dev/null
 ```
 
-The script handles all formatting: title truncation, date conversion (YYYYMMDD → YYYY-MM-DD), view/like abbreviation (1.5K, 2.3M), and generates a markdown table with a summary line.
+Apply this formatting to the JSON lines:
 
-**Arguments:**
-- `--max N` — limit output to N results (use the user's requested count, not the overfetch count)
-- `--query "..."` — the search terms, included in the summary
-- `--filters "..."` — a human-readable description of what filters were applied (e.g., "Showing short videos from the last month.")
-
-If no results survive filtering, the script prints a helpful message suggesting the user loosen their filters.
+- **Title truncation** — trim overly long titles to a readable length.
+- **Date conversion** — `YYYYMMDD` → `YYYY-MM-DD`.
+- **View/like abbreviation** — 1500 → 1.5K, 2300000 → 2.3M.
+- **Summary line** — one line above the table: result count, query, and any filters applied (e.g., "Showing 5 results for 'docker tutorial' — short videos from the last month.").
 
 The output table has these columns: #, Title, Duration, Date, Views, Likes, Channel, Link.
+
+If no results survive filtering, tell the user and suggest loosening the filters.
 
 ## Defaults
 
