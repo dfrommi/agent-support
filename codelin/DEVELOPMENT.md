@@ -44,6 +44,7 @@ Why segment-before-FTS (critical): FTS prefix-matches each prose token across na
 3. **Guidance must push on a *precondition*, not mandate the tool.** Mandating "use code for call-structure questions" made the agent quote the rule and flag *correct* grep+read work as a miss (false guilt) — see Run 3. The working shape: a strong imperative scoped to "you know a symbol name", plus an explicit blessing of `rg`/`fd` for discovery so there's no guilt for document-first tracing.
 4. **Call paths are static-only.** codegraph's call graph does not model runtime `subscribe()`/`emit()`/event-bus wiring (verified: `findPath` returns none for the main Rust data flow). This is upstream, not fixable in codelin. When no path exists, `renderTrace` returns both endpoint symbols + an honest note instead of dead-ending.
 5. **Never mention `grep`/`find` in agent-facing text** — use `rg`/`fd`. (The tool description/guidelines/README were scrubbed accordingly.)
+6. **Activation is gated on root build files.** The extension registers `code` and starts `warmup` only when `build.gradle`, `build.gradle.kts`, or `Cargo.toml` exists at the session cwd (top level, not nested). Registration happens in `session_start` (where `ctx.cwd` is available), not at factory time, so arbitrary repos never get indexed.
 
 ## The four experimental runs (what we learned)
 

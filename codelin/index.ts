@@ -1,17 +1,18 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { explore } from "./explore.ts";
 import { resetGraph, warmup } from "./backend.ts";
 
-export default function codelinExtension(pi: ExtensionAPI) {
-	pi.on("session_start", (_event, ctx) => {
-		void warmup(ctx.cwd);
-	});
+const ROOT_MARKER_FILES = ["build.gradle", "build.gradle.kts", "Cargo.toml"];
 
-	pi.on("session_shutdown", () => {
-		resetGraph();
-	});
+/** True when the repo root has a Gradle or Cargo build file that codelin can index. */
+export function hasProjectMarker(cwd: string): boolean {
+	return ROOT_MARKER_FILES.some((file) => existsSync(path.join(cwd, file)));
+}
 
+function registerCodeTool(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "code",
 		label: "Code",
@@ -45,5 +46,24 @@ export default function codelinExtension(pi: ExtensionAPI) {
 				};
 			}
 		},
+	});
+}
+
+export default function codelinExtension(pi: ExtensionAPI) {
+	let toolRegistered = false;
+
+	pi.on("session_start", (_event, ctx) => {
+		if (!hasProjectMarker(ctx.cwd)) return;
+
+		if (!toolRegistered) {
+			toolRegistered = true;
+			registerCodeTool(pi);
+		}
+
+		void warmup(ctx.cwd);
+	});
+
+	pi.on("session_shutdown", () => {
+		resetGraph();
 	});
 }

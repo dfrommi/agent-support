@@ -4,6 +4,10 @@ A pi extension that replaces `rg`/`fd` for finding code. One tool — **`code`**
 
 Built on [`@colbymchenry/codegraph`](https://www.npmjs.com/package/@colbymchenry/codegraph): 30+ languages, no language server, index built once and kept fresh by a file watcher.
 
+## Scope
+
+Activation is gated on the project root: the extension only registers `code` and starts indexing when `build.gradle`, `build.gradle.kts`, or `Cargo.toml` exists at the session cwd. Other repositories are left untouched for now.
+
 ## The one tool
 
 ```
