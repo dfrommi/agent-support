@@ -3,6 +3,7 @@ name: pi-context
 description: >-
   Pi's own documentation. Use only when the user asks about pi itself, its SDK,
   extensions, themes, skills, or TUI.
+disable-model-invocation: true
 ---
 # Pi Context
 

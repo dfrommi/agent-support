@@ -6,6 +6,7 @@ description: >-
   writing, or reviewing a skill, or choosing how it should guide the agent.
   Covers strategy patterns only — craft-of-writing lives in writing-for-agents,
   well-formedness checks in review-skill.
+disable-model-invocation: true
 ---
 # Skill Patterns
 
