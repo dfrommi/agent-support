@@ -47,17 +47,8 @@ repo documents nothing, the Standards axis is the smell baseline alone.
 
 ### 4. Dispatch four reviewers in parallel
 
-Run each reviewer as its own sub-agent. Pin it to the model this session is
-already running, so a bare `pi -p` never silently falls back to a pricier
-default:
-
-```bash
-pi -p --no-session \
-  --provider "$PI_PROVIDER" \
-  --model "$PI_MODEL" \
-  --thinking "$PI_REASONING_LEVEL" \
-  @<brief-file>
-```
+Run each reviewer as its own independent sub-agent using the same model and
+thinking effort as the current session.
 
 Write each reviewer's brief to a temp file and pass it with `@<path>`. Every
 brief must carry the diff command, the commit list, and the concern's own
@@ -97,7 +88,7 @@ For every finding, actively try to disprove it before accepting:
 Score each 0–100; keep only ≥80.
 
 | Score | Meaning |
-|---|---|
+| --- | --- |
 | 0 | false positive or pre-existing |
 | 25 | plausible, unverifiable |
 | 50 | probably real, weakly evidenced |

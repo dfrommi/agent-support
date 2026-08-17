@@ -28,5 +28,5 @@ Default to checking with me rather than deciding, except for the most trivial ca
 
 - You run inside of Wezterm. Use `wezterm cli` to open new tabs, panes, or windows.
 - Use the `pi` cli when asked to spawn independent subagents:
-  - `pi -p "the prompt"` executes the prompt and returns the output
-  - add `--no-session` if the session is disposable and does not need to be tracked
+  - execute the prompt and return the output: `pi -p "the prompt"` or `pi -p @<prompt-file>`
+  - pin the sub-agent to the same model and provider as the current session: `--provider "$PI_PROVIDER" --model "$PI_MODEL" --thinking "$PI_REASONING_LEVEL"`
