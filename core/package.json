@@ -1,0 +1,9 @@
+{
+  "name": "pi-package-core",
+  "version": "0.1.0",
+  "private": true,
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "unbash": "^4.0.0"
+  }
+}
