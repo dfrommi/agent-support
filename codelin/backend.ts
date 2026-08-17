@@ -2,8 +2,10 @@ import path from "node:path";
 import codegraphPackage from "@colbymchenry/codegraph";
 
 // The published npm SDK (`npm-sdk.js`) re-exports the compiled CJS bundle via
-// `module.exports = require(...)`, so a default import yields that namespace
-// object — the class lives on `.CodeGraph`, not on the default itself.
+// `module.exports = require(...)`, so a default import yields the namespace with
+// the class on `.CodeGraph`. The local fork's `dist/index.js` instead exposes the
+// class on BOTH `.CodeGraph` and `.default`, so a transpiler that unwraps
+// `__esModule` defaults yields the class itself. Accept every shape.
 
 type CgProgress = { phase: string; current: number; total: number };
 
@@ -34,12 +36,26 @@ export type CgEdge = {
 
 export type CgPendingFile = { path: string };
 
+export type CgContext = {
+	focal: CgNode | null;
+	ancestors: CgNode[];
+	children: CgNode[];
+	incomingRefs: Array<{ node: CgNode; edge: CgEdge }>;
+	outgoingRefs: Array<{ node: CgNode; edge: CgEdge }>;
+	types: CgNode[];
+	imports: CgNode[];
+};
+
 export interface CgInstance {
 	getFiles(): Array<{ path: string; language?: string; nodeCount?: number }>;
 	getNode(id: string): CgNode | null;
 	getNodesByName(name: string): CgNode[];
+	getNodesByNameSubstring(substring: string, options?: { limit?: number; kinds?: string[] }): CgNode[];
+	getNodesByKind(kind: string): CgNode[];
 	getNodesInFile(filePath: string): CgNode[];
 	getChildren(id: string): CgNode[];
+	getContext(id: string): CgContext;
+	getAncestors(id: string): CgNode[];
 	searchNodes(query: string, options?: { limit?: number }): Array<{ node: CgNode; score: number }>;
 	getSegmentMatches(words: string[], limit?: number): Array<{ name: string; kind: string; filePath: string; startLine: number; matchedWords: string[] }>;
 	getCode(id: string): Promise<string | null>;
@@ -64,7 +80,7 @@ interface CgApi {
 	open(root: string, opts?: { sync?: boolean }): Promise<CgInstance>;
 }
 
-const { CodeGraph } = codegraphPackage as unknown as { CodeGraph: CgApi };
+const CodeGraph = ((codegraphPackage as any)?.CodeGraph ?? (codegraphPackage as any)?.default ?? codegraphPackage) as CgApi;
 
 // ── Instance management ────────────────────────────────────
 
