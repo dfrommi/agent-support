@@ -32,7 +32,6 @@ interface Question {
     label: string;
     prompt: string;
     options: QuestionOption[];
-    allowOther: boolean;
 }
 
 interface Answer {
@@ -66,7 +65,6 @@ const QuestionSchema = Type.Object({
     ),
     prompt: Type.String({ description: "The full question text to display" }),
     options: Type.Array(QuestionOptionSchema, { description: "Available options to choose from" }),
-    allowOther: Type.Optional(Type.Boolean({ description: "Allow 'Type something' option (default: true)" })),
 });
 
 const QuestionnaireParams = Type.Object({
@@ -88,11 +86,12 @@ export default function ask_user_question(pi: ExtensionAPI) {
         name: "ask_user_question",
         label: "Ask User Question",
         description:
-            "Ask the user up to 4 structured questions with 2-4 predefined options.",
+            "Ask the user up to 4 structured questions with 2-4 predefined options. Each question also includes a free-text 'Type something.' option.",
         promptGuidelines: [
             "Use `ask_user_question` whenever presenting options or asking the user to make a choice — prefer it over prose.", // was: "Use ask_user_question for clarification instead of open-ended questions in prose."
-            "Group up to 4 **independent** questions into one `ask_user_question` call. Never group questions where one question depends on the answer of another.  Keep options meaningfully different.",
-            "When you have a clear preference, mark **exactly one** option with `recommended: true` and place it first in the options array."
+            "Group up to 4 **independent** questions into one `ask_user_question` call. Never group questions where one question depends on the answer of another. Keep options meaningfully different.",
+            "When you have a clear preference, mark **exactly one** option with `recommended: true` and place it first in the options array.",
+            "Every `ask_user_question` question automatically includes a free-text 'Type something.' option — don't add your own free-text field."
         ],
         parameters: QuestionnaireParams,
 
@@ -108,7 +107,6 @@ export default function ask_user_question(pi: ExtensionAPI) {
             const questions: Question[] = params.questions.map((q, i) => ({
                 ...q,
                 label: q.label || `Q${i + 1}`,
-                allowOther: q.allowOther !== false,
             }));
 
             const isMulti = questions.length > 1;
@@ -162,9 +160,7 @@ export default function ask_user_question(pi: ExtensionAPI) {
                     const q = currentQuestion();
                     if (!q) return [];
                     const opts: RenderOption[] = q.options.map((o, i) => ({ ...o, originalIndex: i + 1 }));
-                    if (q.allowOther) {
-                        opts.push({ value: "__other__", label: "Type something.", isOther: true, originalIndex: opts.length + 1 });
-                    }
+                    opts.push({ value: "__other__", label: "Type something.", isOther: true, originalIndex: opts.length + 1 });
                     return opts;
                 }
 
