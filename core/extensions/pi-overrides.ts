@@ -1,11 +1,12 @@
 /**
  * Overrides of pi's built-in behavior:
- * - Strips the built-in docs guidance from the system prompt (restored on
- *   demand by the `pi-context` skill).
  * - Disables tools this repo doesn't want active.
  * - Rewrites the bash tool prompt to prefer gitignore-aware binaries
  *   ("find" -> "fd", "grep" -> "rg").
  * - Warns in the bash output whenever a command actually invokes find/grep.
+ *
+ * The system prompt itself is assembled by `system-prompt-assembler.ts` from
+ * `SYSTEM.md`; this module no longer touches it.
  */
 
 import { createBashTool, isBashToolResult, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -64,10 +65,6 @@ function buildWarning(used: string[]): string {
 	return `\n\n[warning] this command used ${quoted}; prefer ${alts} (respects .gitignore)`;
 }
 
-// Added by pi's core system-prompt builder (dist/core/system-prompt.js), not by
-// the bash tool, so it can only be changed via a before_agent_start rewrite.
-const CORE_FILE_OPS_GUIDELINE = "Use bash for file operations like ls, rg, find";
-
 export default function piOverrides(pi: ExtensionAPI) {
 	// Warn in the bash output whenever the model reaches for find/grep instead
 	// of the gitignore-aware alternatives the prompt already recommends.
@@ -93,24 +90,5 @@ export default function piOverrides(pi: ExtensionAPI) {
 			promptSnippet: bash.promptSnippet ? swapCommandNames(bash.promptSnippet) : bash.promptSnippet,
 			promptGuidelines: bash.promptGuidelines?.map(swapCommandNames),
 		});
-	});
-
-	pi.on("before_agent_start", (event: any) => {
-		let prompt = event.systemPrompt;
-
-		const removed = prompt.match(PI_DOCS_SECTION)?.[0];
-		if (removed) {
-			prompt = prompt.replace(removed, "");
-		}
-
-		if (prompt.includes(CORE_FILE_OPS_GUIDELINE)) {
-			prompt = prompt.replace(CORE_FILE_OPS_GUIDELINE, swapCommandNames(CORE_FILE_OPS_GUIDELINE));
-		}
-
-		if (prompt === event.systemPrompt) return undefined;
-
-		return {
-			systemPrompt: prompt.trimEnd(),
-		};
 	});
 }
