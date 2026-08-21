@@ -15,6 +15,9 @@ import { parse } from "unbash";
 const PI_DOCS_SECTION =
 	/\nPi documentation \(read only when the user asks about pi itself[^\n]*\):\n(?:- [^\n]*\n)*- [^\n]*/i;
 
+// Matches pi's conditional file-operations guideline after find is replaced by fd.
+export const BASH_FILE_OPS_GUIDELINE = "Use bash for file operations like ls, rg, fd";
+
 // Tools to disable at session start. Add or remove names here.
 const DISABLED_TOOLS: string[] = [
 	"copilot_credit_usage",
