@@ -1,28 +1,43 @@
 ---
 name: web-fetch
 description: >-
-  Use this skill whenever the agent needs information from the web rather than
-  local files or prior knowledge. Trigger for user-provided URLs, current or
-  externally verifiable facts, online research, scraping/crawling pages,
-  official docs, library/framework APIs, open-source code examples, changelogs,
-  issues, releases, or source verification. Do not use for purely local
-  repository work or when the user already supplied all needed data.
+  Use when the agent needs information from the web rather than local files or
+  prior knowledge: user-provided URLs, current or externally verifiable facts,
+  research, scraping/crawling, official docs, library/framework APIs, OSS code,
+  changelogs, issues, releases, or source verification. Not for purely local
+  repo work or when the user already supplied all needed data.
 ---
 ## Web, Code, and Docs Research
 
-Use `ketch` CLI for all external research — web pages, OSS code, library docs.
+Use the `ketch` CLI for all external research. Backends are fixed: Brave (search),
+grepapp (code), Context7 (docs).
 
-- Web search: `ketch search "query"` — titles, URLs, snippets
-- Web search + full content: `ketch search "query" --scrape`
-- Scrape: `ketch scrape <url>` — fetches a URL and returns clean markdown
-- Batch scrape: `ketch scrape <url1> <url2> ...` — concurrent fetch
-- Crawl: `ketch crawl <url> --sitemap --background` — crawl a site, poll with `ketch crawl status`
-- Code search: `ketch code "query" --lang go` — real OSS code with line + repo + stars
-- Library docs: `ketch docs "query" --library /org/repo` — version-aware curated snippets
-- JS-rendered pages are handled automatically — if a page returns a loading shell, ketch re-fetches it with a headless browser.
-- All commands support `--json` for structured output.
-- Discovery: `ketch config` — returns effective config and available backends as JSON.
-- The operator has already configured the search/code/docs backends and browser. Do not override unless you have a specific reason.
+### Search
+- `ketch search "query"` — title, URL, snippet
+- `ketch search "query" --scrape` — also return full markdown for each result
+- Filter by host with `site:` (include) / `-site:` (exclude), `OR` for several:
+  `ketch search "CVE-2024-3094 site:nvd.nist.gov OR site:cisa.gov -site:github.com"`
+  (brave/exa/ddg honor it; parallel does not — drop parallel from `--multi` when filtering)
+- `--minimal` — one tab-separated line per result; `--trim` drops markdown formatting
+- `--multi=brave,exa,parallel` — federate several backends (rank-fused, deduped); `--random` tries one then falls back
 
-Use `ketch <command> --help` for detailed usage and options. Always prefer structured output for agent consumption.
+### Scrape
+- `ketch scrape <url>` — clean markdown of a page (handles thin and large pages)
+- `ketch scrape <url1> <url2> ...` — batch; also accepts a JSON array, file, or stdin list
+- `ketch scrape <url> --select "css selector"` — extract one element; `--raw` — raw HTML
+- `--force-browser` — always render via headless Chrome, skipping JS-shell auto-detection
 
+### Code
+- `ketch code "query" --lang go` — repo, file, line number, snippet (commit-pinned URL)
+- `--backend github` adds star counts; `--regex` interprets the query as a regex
+
+### Docs
+- `ketch docs "react" --resolve` — find a library's Context7 id (returns ids like `/react/react`)
+- `ketch docs "useActionState" --library /react/react` — query that id for code snippets
+- `--tokens N` caps the snippet budget
+
+### Crawl
+- `ketch crawl <url> --sitemap --background`, then poll `ketch crawl status` (stop with `ketch crawl stop`)
+- `--allow "substr"` / `--deny "regex"` filter discovered URLs; `--depth N` bounds BFS depth
+
+All commands support `--json`; prefer it for agent consumption. `ketch <command> --help` lists remaining flags.
