@@ -1,93 +1,129 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { createGraph, resetLspGraph } from "./graph-lsp.ts";
-import type { Graph } from "./graph.ts";
+import { getGraph, resetGraphs } from "./lib/session.ts";
+import type { SymbolKind } from "./lib/model.ts";
+import type { Scope } from "./lib/scope.ts";
+import { detectLanguage } from "./languages/detect.ts";
+import { explore, search, type SearchParams } from "./render.ts";
 
-let _graph: Graph | null = null;
+const ROOT_MARKER_FILES = ["Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts"];
 
-export default function codeGraphExtension(pi: ExtensionAPI) {
-	pi.on("session_shutdown", async () => {
-		await resetLspGraph();
-		_graph = null;
-	});
+// Must stay in sync with the SymbolKind union in lib/model.ts.
+const symbolKindType = Type.Union([
+	Type.Literal("class"),
+	Type.Literal("interface"),
+	Type.Literal("enum"),
+	Type.Literal("struct"),
+	Type.Literal("trait"),
+	Type.Literal("module"),
+	Type.Literal("method"),
+	Type.Literal("constructor"),
+	Type.Literal("field"),
+	Type.Literal("function"),
+	Type.Literal("variable"),
+	Type.Literal("constant"),
+	Type.Literal("enum_member"),
+	Type.Literal("macro"),
+	Type.Literal("type"),
+]);
 
-	pi.registerTool({
-		name: "graph",
-		label: "Code Graph",
-		description:
-			"Query the codebase graph via LSP. `db` is pre-bound. Chain methods, end with a terminal. " +
-			"Supports Java and Rust. Requires language server on PATH.",
-		promptSnippet: "Query code structure via LSP: symbols, callers, callees, impact, paths",
-		promptGuidelines: [
-			"Write a single comprehensive graph query that answers the question fully. Prefer one well-crafted chain over multiple graph calls — avoid using graph like grep or find.",
-			"Start from db.symbol('name'), db.find('partial'), db.all(), or db.file('path.java').symbols().",
-			"Traverse: .callers({ transitive: true }) / .callees(...). Add scope: { exclude: ['**/test/**'] } to prune test code.",
-			"Filter: .where(s => s.kind === 'class'), .inPath('src/main/**/*.java').",
-			"Terminate with .explain() for one symbol, .impact({ scope }) for blast radius, .pathsTo(target) for call paths, or .asTable() / .tree() / .list().",
-			"Java methods include parameter types in names: use db.find('findById') for fuzzy matching, not db.symbol('findById').",
-		],
-		parameters: Type.Object({
-			code: Type.String({
-				description:
-					"TypeScript expression or statements. `db` is pre-bound. Examples:\n" +
-					'• db.symbol("UserService").explain()\n' +
-					'• db.symbol("findUser").callers({ transitive: true, scope: { exclude: ["**/test/**"] } }).asTable()\n' +
-					'• db.file("UserService.java").symbols().where(s => s.kind === "method").asTable()\n' +
-					'• db.symbol("findById").impact({ scope: { exclude: ["**/test/**"] } })\n' +
-					'• db.changed({ since: "main" }).where(s => s.kind === "class").asTable()',
-			}),
-		}),
-		execute: async (_toolCallId, params) => {
-			const cwd = process.cwd();
-			try {
-				_graph = await createGraph(cwd);
-				const db = _graph;
-				const code = (params.code as string).trim();
-				const isExpression = !code.includes("\n") && !code.includes(";");
-				const wrapped = isExpression
-					? `return (${code})`
-					: `return (async () => { ${code} })()`;
-				const fn = new Function("db", wrapped);
-				const result = await fn(db);
-				return {
-					content: [{ type: "text", text: formatOutput(result) }],
-					details: {},
-				};
-			} catch (e) {
-				return {
-					content: [{ type: "text", text: `Error: ${(e as Error).message}` }],
-					details: {},
-				};
-			}
-		},
-	});
+function hasProjectMarker(cwd: string): boolean {
+	return ROOT_MARKER_FILES.some((file) => existsSync(path.join(cwd, file)));
 }
 
-function formatOutput(value: unknown): string {
-	if (value === undefined) return "(no return value — did you forget .list(), .asTable(), etc.?)";
-	if (value === null) return "null";
-	if (typeof value === "string") return value;
-	if (typeof value === "number" || typeof value === "boolean") return String(value);
-	if (Array.isArray(value)) {
-		if (value.length === 0) return "[]";
-		return JSON.stringify(
-			value.map((item) => {
-				if (item && typeof item === "object") {
-					return {
-						name: (item as any).name,
-						kind: (item as any).kind,
-						file: (item as any).file,
-						line: (item as any).line,
-					};
-				}
-				return item;
-			}),
-			null,
-			2,
-		);
+async function warmup(root: string): Promise<void> {
+	try {
+		await getGraph(root, detectLanguage(root).factory);
+	} catch {
+		// surface the error on first tool use, not during session start
 	}
-	if (typeof value === "object") {
-		return JSON.stringify(value, null, 2);
-	}
-	return String(value);
+}
+
+export default function codeGraphExtension(pi: ExtensionAPI) {
+	let registered = false;
+
+	pi.on("session_start", (_event, ctx) => {
+		if (!hasProjectMarker(ctx.cwd)) return;
+
+		if (!registered) {
+			registered = true;
+			pi.registerTool({
+				name: "code",
+				label: "Code",
+				description:
+					"One call for a symbol, file, or location: returns source/members, Callees (what it calls), Callers/Usages (who calls it), and Implementations/Subclasses/Overrides. " +
+					"Prefer over rg+read when you know a name or line.",
+				promptSnippet: "Look up a symbol, file, or location: source + members + callees + callers + implementations in one call",
+				promptGuidelines: [
+					"Use code(name) whenever you know a symbol name (from a file, an rg hit, or a stack trace) — it returns body/members plus Callees, Callers, and Overrides in one call.",
+					"Use code('Container.member') to resolve straight to a member when a bare name is ambiguous.",
+					"Use code(file:line) or code(Class:line) to zoom from a listing to the enclosing method's body + Callees + Callers; prefer code over read().",
+					"Use code(file) to outline a file's symbols instead of reading the whole file.",
+					"Read code's Callees / Callers / Implementations sections for 'what X calls', 'who calls X', and 'who implements/overrides X'.",
+					"Discover unknown names with code_search first; use rg only for literal text, regex, config, comments, and unindexed/generated files.",
+				],
+				parameters: Type.Object({
+					query: Type.String({
+						description: "Symbol name ('UserService', 'UserService.findUser'), file path ('src/.../User.java'), or location ('UserService.java:14', 'UserService:14', 'UserService.java:14-20'); a location resolves to the enclosing method.",
+					}),
+					scope: Type.Optional(Type.Union([Type.Literal("main"), Type.Literal("test"), Type.Literal("all")], { description: "main/test/all; default all." })),
+				}),
+				execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+					try {
+						const text = await explore(ctx.cwd, params.query as string, (params.scope as Scope) ?? "all");
+						return { content: [{ type: "text", text }], details: {} };
+					} catch (e) {
+						return { content: [{ type: "text", text: `Error: ${(e as Error).message}` }], details: {} };
+					}
+				},
+			});
+
+			pi.registerTool({
+				name: "code_search",
+				label: "Code Search",
+				description:
+					"Find symbols by name substring. Optional includeKinds/excludeKinds, path glob, and scope. " +
+					"Returns ranked matches with kind, container, file:line, signature. Use to discover a name, then call code(name).",
+				promptSnippet: "Find symbol names by substring + kind/path/scope filters (use before code())",
+				promptGuidelines: [
+					"Use code_search to discover a symbol name you don't know yet; it searches indexed names (including Container.member) and returns kind + file:line. Then call code(name) for source, members, and usages.",
+					"code_search substrings are OR'd and case-insensitive: start with one substring, add more only to widen.",
+					"Narrow large code_search results with includeKinds/excludeKinds, a path glob, or scope instead of reading every hit.",
+					"code_search covers symbol names only; use rg for literal text, regex, config, comments, and unindexed/generated files.",
+				],
+				parameters: Type.Object({
+					substrings: Type.Array(Type.String(), {
+						description: "Case-insensitive substrings (OR'd); a symbol matches if any appears in its name or 'Container.member' name.",
+					}),
+					includeKinds: Type.Optional(Type.Array(symbolKindType, { description: "Only return these kinds." })),
+					excludeKinds: Type.Optional(Type.Array(symbolKindType, { description: "Exclude these kinds; wins over includeKinds." })),
+					scope: Type.Optional(Type.Union([Type.Literal("main"), Type.Literal("test"), Type.Literal("all")], { description: "main/test/all; default all." })),
+					path: Type.Optional(Type.String({ description: "Glob on the project-relative or absolute file path (e.g. 'src/main/**')." })),
+				}),
+				execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+					try {
+						const p: SearchParams = {
+							substrings: params.substrings as string[],
+							includeKinds: params.includeKinds as SymbolKind[] | undefined,
+							excludeKinds: params.excludeKinds as SymbolKind[] | undefined,
+							scope: (params.scope as Scope | undefined) ?? "all",
+							path: params.path as string | undefined,
+						};
+						const text = await search(ctx.cwd, p);
+						return { content: [{ type: "text", text }], details: {} };
+					} catch (e) {
+						return { content: [{ type: "text", text: `Error: ${(e as Error).message}` }], details: {} };
+					}
+				},
+			});
+		}
+
+		void warmup(ctx.cwd);
+	});
+
+	pi.on("session_shutdown", () => {
+		void resetGraphs();
+	});
 }

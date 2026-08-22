@@ -1,55 +1,71 @@
-# Code Graph
+# code-graph
 
-LSP-powered queryable code graph for exploring codebases. TypeScript, Java, Rust.
+LSP-backed code understanding, exposed as a library and a thin CLI.
 
-```
-node cli.ts <directory> <query>
-node cli.ts <directory> --repl
-```
+Java and Rust, built so more languages can be added behind the same
+`LanguageAdapter` interface.
 
-## Quick examples
+## Layers
+
+- `lib/` — language-agnostic model, graph, query, resolution, scope, usages, and session cache.
+- `languages/java/` — Java adapter (jdtls) + tree-sitter enrichment.
+- `languages/rust/` — Rust adapter (rust-analyzer) + tree-sitter enrichment.
+- `lsp/` — generic JSON-RPC LSP client infrastructure.
+- `interfaces/` — the CLI.
+- `index.ts` / `render.ts` — the pi extension: `code` and `code_search` tools over the cached graph.
+
+## Pi extension
+
+When loaded by pi and the session cwd has `Cargo.toml`, `pom.xml`, or
+`build.gradle(.kts)`, two tools are registered:
+
+- `code("UserService")` / `code("UserService.findUser")` — resolve a symbol and
+  return source/members, doc/annotations, usages, and implementations/overrides
+  in one call. `code("UserService.java:14")` / `code("UserService:14")` resolve a
+  location to the outermost method containing that line (same output as a method
+  query).
+- `code_search({ substrings: ["find"], includeKinds: ["method"] })` — list ranked
+  symbol matches (name, kind, container, file:line, signature) to discover names
+  before calling `code`.
+
+The graph is warmed at session start and kept fresh via mtime invalidation;
+usages are always live from LSP.
+
+## CLI
 
 ```bash
-node cli.ts ../zod 'db.stats()'
-node cli.ts ../zod 'db.symbol("ZodObject").where(s => s.kind === "class").explain()'
-node cli.ts ../zod 'db.all().where(s => s.kind === "class" && s.exported).asTable()'
-node cli.ts /path/to/java/project 'db.symbol("OwnerController").explain()'
+node interfaces/cli.ts <directory> symbol <name>
+node interfaces/cli.ts <directory> find <pattern> [--kind <k>] [--path <glob>]
+node interfaces/cli.ts <directory> members <container>
+node interfaces/cli.ts <directory> file <path>
+node interfaces/cli.ts <directory> detail <name>
+node interfaces/cli.ts <directory> find-usages <name> [--kind <k>] [--container <c>] [--signature <sig>]
+node interfaces/cli.ts <directory> code <query> [--scope <main|test|all>]
+node interfaces/cli.ts <directory> search <substr> [...] [--include <k,...>] [--exclude <k,...>] [--scope <main|test|all>] [--path <glob>]
+node interfaces/cli.ts <directory> --stats
 ```
 
-## Query API
+Requires a buildable Maven/Gradle project (with `jdtls` on PATH) or a Cargo
+project (with `rust-analyzer` on PATH).
 
-```
-Entry points:
-  db.symbol(name)       Exact name match
-  db.file(path)         Partial/ending path match
-  db.all()              All symbols
-  db.files()            All files
-  db.stats()            { files, symbols }
+## Library
 
-Traversal:
-  .callers()            Who calls these? [async]
-  .callees()            What do these call? [async]
-  .file()               Symbol → FileQuery
-  .symbols()            FileQuery → SymbolQuery
+```ts
+import { createGraph } from "./lib/graph.ts";
+import { JavaAdapter } from "./languages/java/adapter.ts";
 
-Filtering:
-  .filter(predicate)    Arbitrary predicate
-  .where(predicate)     Alias
-  .exported()           Exported only
-
-Terminals:
-  .list()               Raw array
-  .asTable()            Pretty-printed table
-  .tree()               Indented, grouped by file
-  .count()              Count
-  .first()              First match
-  .summary()            Distribution by kind/file
-  .explain()            Detailed breakdown [async]
+const adapter = await JavaAdapter.connect(root);
+try {
+  const graph = await createGraph(root, adapter);
+  const matches = graph.symbol("findById");
+  const methods = graph.find("find").where("method").list();
+  const serviceMembers = graph.members("UserService").list();
+  const usages = await graph.findUsages("findById");
+  console.log(graph.stats());
+} finally {
+  await adapter.close();
+}
 ```
 
-## Prerequisites
-
-Language servers must be installed (mason/brew):
-- `typescript-language-server` — npm/mason
-- `jdtls` — Eclipse JDT LS via mason
-- `rust-analyzer` — via rustup/brew
+For Rust, import `RustAdapter` from `./languages/rust/adapter.ts` instead; the
+rest of the API is identical.

@@ -1,10 +1,12 @@
 {
-  "name": "pi-extension-code-graph",
+  "name": "code-graph",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Queryable code graph for pi — explore symbols, callers, callees, and more",
-  "keywords": ["pi-package"],
+  "description": "LSP-backed code understanding library and CLI",
+  "bin": {
+    "code-graph": "./interfaces/cli.ts"
+  },
   "pi": {
     "extensions": ["./index.ts"]
   },
@@ -13,6 +15,7 @@
   },
   "dependencies": {
     "tree-sitter-wasms": "0.1.13",
+    "vscode-languageserver-protocol": "3.18.2",
     "web-tree-sitter": "0.25.10"
   },
   "peerDependencies": {

@@ -1,3 +1,4 @@
+#[derive(Debug, Clone)]
 pub struct User {
     pub id: String,
     pub name: String,
@@ -13,6 +14,7 @@ impl User {
     }
 }
 
+/// Formats a greeting for the given name.
 pub fn format_message(name: String) -> String {
     let greeting = build_greeting();
     format!("{}, {}!", greeting, name)
@@ -62,3 +64,6 @@ impl Auditable for AuditLogger {
 fn log_message(msg: &str) {
     println!("[AUDIT] {}", msg);
 }
+
+pub struct Marker;
+

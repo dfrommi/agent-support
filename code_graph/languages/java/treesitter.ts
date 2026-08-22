@@ -1,0 +1,126 @@
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import { Language, Parser, type SyntaxNode } from "web-tree-sitter";
+import type { Symbol } from "../../lib/model.ts";
+
+const WASM = fileURLToPath(
+	new URL("../../node_modules/tree-sitter-wasms/out/tree-sitter-java.wasm", import.meta.url),
+);
+
+const CONTAINERS = new Set([
+	"class_declaration",
+	"interface_declaration",
+	"enum_declaration",
+	"record_declaration",
+	"annotation_type_declaration",
+]);
+
+const MEMBERS = new Set([
+	"method_declaration",
+	"constructor_declaration",
+	"compact_constructor_declaration",
+	"annotation_type_element_declaration",
+]);
+
+const COMMENT_TYPES = new Set(["line_comment", "block_comment", "doc_comment", "comment"]);
+
+const named = (n: SyntaxNode): SyntaxNode[] => n.namedChildren.filter((c): c is SyntaxNode => c !== null);
+
+let parser: Parser | null = null;
+
+async function getParser(): Promise<Parser> {
+	if (parser) return parser;
+	await Parser.init();
+	const p = new Parser();
+	p.setLanguage(await Language.load(WASM));
+	parser = p;
+	return p;
+}
+
+/**
+ * Attach leading annotations and Javadoc to the given symbols in a file.
+ * Tree-sitter is used only for this metadata — symbol identity stays LSP-owned.
+ */
+export async function enrichSymbols(file: string, symbols: Symbol[]): Promise<void> {
+	const text = fs.readFileSync(file, "utf8");
+	const tree = (await getParser()).parse(text);
+	try {
+		const decls = collectDeclarations(tree.rootNode);
+		for (const sym of symbols) {
+			const key = `${sym.name}:${sym.location.nameRange.start.line}`;
+			const meta = decls.get(key);
+			if (!meta) continue;
+			if (meta.annotations.length > 0) sym.annotations = meta.annotations;
+			if (meta.doc) sym.doc = meta.doc;
+		}
+	} finally {
+		tree.delete();
+	}
+}
+
+interface Meta {
+	annotations: string[];
+	doc?: string;
+}
+
+function collectDeclarations(root: SyntaxNode): Map<string, Meta> {
+	const map = new Map<string, Meta>();
+	const walk = (node: SyntaxNode): void => {
+		if (CONTAINERS.has(node.type) || MEMBERS.has(node.type)) {
+			const nameNode = node.childForFieldName("name");
+			if (nameNode) add(map, node, nameNode);
+		} else if (node.type === "field_declaration" || node.type === "constant_declaration") {
+			for (const d of named(node)) {
+				if (d.type === "variable_declarator") {
+					const nameNode = d.childForFieldName("name");
+					if (nameNode) add(map, node, nameNode);
+				}
+			}
+		} else if (node.type === "enum_constant") {
+			const nameNode = node.childForFieldName("name");
+			if (nameNode) add(map, node, nameNode);
+		}
+		for (const c of named(node)) walk(c);
+	};
+	walk(root);
+	return map;
+}
+
+function add(map: Map<string, Meta>, decl: SyntaxNode, nameNode: SyntaxNode): void {
+	const key = `${nameNode.text}:${nameNode.startPosition.row + 1}`;
+	if (!map.has(key)) map.set(key, extractMeta(decl));
+}
+
+function extractMeta(decl: SyntaxNode): Meta {
+	const annotations: string[] = [];
+	const comments: string[] = [];
+
+	const modifiers = decl.children.find((c) => c.type === "modifiers");
+	if (modifiers) {
+		for (const c of named(modifiers)) {
+			if (c.type === "annotation" || c.type === "marker_annotation") {
+				annotations.push(c.text);
+			}
+		}
+	}
+
+	const parent = decl.parent;
+	if (parent) {
+		const siblings = named(parent);
+		// node wrappers are not stable across separate child accesses — match by id.
+		const idx = siblings.findIndex((s) => s.id === decl.id);
+		for (let i = idx - 1; i >= 0; i--) {
+			const sib = siblings[i];
+			if (sib.type === "annotation" || sib.type === "marker_annotation") {
+				annotations.unshift(sib.text);
+			} else if (COMMENT_TYPES.has(sib.type)) {
+				comments.unshift(sib.text);
+			} else {
+				break;
+			}
+		}
+	}
+
+	const doc = comments.join("\n").trim();
+	return { annotations, doc: doc || undefined };
+}

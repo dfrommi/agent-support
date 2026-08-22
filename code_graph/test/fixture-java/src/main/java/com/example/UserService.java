@@ -30,6 +30,7 @@ public class UserService {
         }
     }
 
+    @Deprecated
     private void auditLog(String message) {
         // logging
     }

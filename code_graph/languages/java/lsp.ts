@@ -17,7 +17,7 @@
  * ## 3. Maven/Gradle import must be explicitly enabled
  *    Without initializationOptions.settings.java.import, jdtls opens the
  *    folder as a generic project — symbols only resolve within opened files.
- *    Cross-file call hierarchy, references, and workspace/symbol all fail.
+ *    Cross-file resolution, references, and workspace/symbol all fail.
  *
  * ## 4. workspaceFolders must be sent in initialize
  *    jdtls uses workspaceFolders (not just rootUri) to discover build files.
@@ -30,25 +30,28 @@
  *
  * ## 6. Project must build successfully
  *    If the project has compile errors or missing dependencies, jdtls may
- *    still start but cross-file resolution returns empty. The startup code
- *    can't detect this — graph-lsp.ts verifies import via a workspace/symbol
- *    probe with an actual class name extracted from a source file.
- *
- * ## 7. Dangling Gradle daemons can block subsequent runs
- *    If a Gradle import hangs (e.g. downloading dependencies), the daemon
- *    stays alive and holds locks. Kill gradle processes before retrying.
+ *    still start but cross-file resolution returns empty.
  */
 
 import crypto from "node:crypto";
 import { execSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { LspClient } from "./client.ts";
-import { findBinary } from "./findBinary.ts";
+import { SymbolKind as LspSymbolKind } from "vscode-languageserver-protocol";
+import { LspClient } from "../../lsp/client.ts";
+import { findBinary } from "../../lsp/findBinary.ts";
+import type { SymbolKind } from "../../lib/model.ts";
 
-const JDTLS_LAUNCHER = findBinary("jdtls", [
-	path.join(os.homedir(), ".local/share/nvim/mason/packages/jdtls/bin/jdtls"),
-]);
+// Resolve the launcher lazily so importing this module (e.g. loading the pi
+// extension) never throws just because jdtls is not installed.
+let jdtlsLauncher: string | null = null;
+function getJdtlsLauncher(): string {
+	if (jdtlsLauncher) return jdtlsLauncher;
+	jdtlsLauncher = findBinary("jdtls", [
+		path.join(os.homedir(), ".local/share/nvim/mason/packages/jdtls/bin/jdtls"),
+	]);
+	return jdtlsLauncher;
+}
 
 // JDTLS_HOME must be the real package directory, not a symlink target.
 // Derive from the fallback path, not the resolved binary (which may be a symlink).
@@ -88,7 +91,7 @@ export async function createJavaServer(root: string): Promise<LspClient> {
 	];
 
 	const javaHome = resolveJavaHome();
-	const client = new LspClient(JDTLS_LAUNCHER, args, root, { JAVA_HOME: javaHome });
+	const client = new LspClient(getJdtlsLauncher(), args, root, { JAVA_HOME: javaHome });
 
 	// Pitfall #3 + #4: Maven/Gradle import + workspaceFolders
 	await client.initialize(`file://${root}`, {
@@ -102,19 +105,24 @@ export async function createJavaServer(root: string): Promise<LspClient> {
 	return client;
 }
 
-export const extensions = [".java"];
 export const languageId = "java";
 
-export function symbolKind(kind: number): string {
+/** Map an LSP SymbolKind to the canonical SymbolKind, or null for non-symbols. */
+export function lspKindToSymbolKind(kind: number): SymbolKind | null {
 	switch (kind) {
-		case 5: return "class";
-		case 6: return "method";
-		case 9: return "constructor";
-		case 11: return "interface";
-		case 10: return "enum";
-		case 8: return "field";
-		case 14: return "constant";
-		case 13: return "variable";
-		default: return "unknown";
+		case LspSymbolKind.Class: return "class";
+		case LspSymbolKind.Interface: return "interface";
+		case LspSymbolKind.Enum: return "enum";
+		case LspSymbolKind.Method: return "method";
+		case LspSymbolKind.Constructor: return "constructor";
+		case LspSymbolKind.Field: return "field";
+		case LspSymbolKind.EnumMember: return "enum_member";
+		case LspSymbolKind.Constant: return "field";
+		case LspSymbolKind.Property: return "field";
+		case LspSymbolKind.Variable: return "variable";
+		case LspSymbolKind.Function: return "function";
+		case LspSymbolKind.Struct: return "class";
+		// LSP kinds that are not code symbols: File, Module, Namespace, Package, ...
+		default: return null;
 	}
 }

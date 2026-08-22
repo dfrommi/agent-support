@@ -1,24 +1,41 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createInterface } from "node:readline";
+import {
+	createMessageConnection,
+	NullLogger,
+	StreamMessageReader,
+	StreamMessageWriter,
+	type MessageConnection,
+} from "vscode-jsonrpc/node";
+import {
+	CallHierarchyOutgoingCallsRequest,
+	CallHierarchyPrepareRequest,
+	DidChangeTextDocumentNotification,
+	DidOpenTextDocumentNotification,
+	DocumentSymbolRequest,
+	ExitNotification,
+	ImplementationRequest,
+	InitializedNotification,
+	InitializeRequest,
+	ReferencesRequest,
+	ShutdownRequest,
+	TypeHierarchyPrepareRequest,
+	TypeHierarchySubtypesRequest,
+	type CallHierarchyItem,
+	type CallHierarchyOutgoingCall,
+	type DocumentSymbol,
+	type Location,
+	type TypeHierarchyItem,
+} from "vscode-languageserver-protocol";
 
-// ── JSON-RPC over stdio ─────────────────────────────────────
+const DEFAULT_TIMEOUT_MS = 30_000;
 
-interface Message {
-	jsonrpc: "2.0";
-	id?: number | string;
-	method?: string;
-	params?: unknown;
-	result?: unknown;
-	error?: { code: number; message: string; data?: unknown };
-}
-
+/**
+ * Minimal LSP client over stdio, built on vscode-jsonrpc for framing/transport
+ * and vscode-languageserver-protocol for request/notification types.
+ */
 export class LspClient {
 	private process: ChildProcess;
-	private pending = new Map<number | string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-	private nextId = 1;
-	private buffer = "";
-	private contentLength = -1;
-	private onNotification: ((method: string, params: unknown) => void) | null = null;
+	private connection: MessageConnection;
 
 	constructor(command: string, args: string[], cwd: string, env?: Record<string, string>) {
 		this.process = spawn(command, args, {
@@ -27,89 +44,53 @@ export class LspClient {
 			env: { ...process.env, ...env },
 		});
 
-		this.process.stdout!.on("data", (chunk: Buffer) => this.handleData(chunk.toString()));
+		this.connection = createMessageConnection(
+			new StreamMessageReader(this.process.stdout!),
+			new StreamMessageWriter(this.process.stdin!),
+			NullLogger,
+		);
+		this.connection.listen();
+
 		this.process.stderr!.on("data", (chunk: Buffer) => {
-			// LSP servers often log to stderr
 			process.stderr.write(`[lsp:stderr] ${chunk}`);
 		});
 		this.process.on("error", (e) => {
-			for (const [, { reject }] of this.pending) reject(e);
+			this.connection.dispose();
+			process.stderr.write(`[lsp] spawn error: ${e.message}\n`);
 		});
-		this.process.on("exit", (code) => {
-			if (code !== 0 && code !== null) {
-				const msg = `LSP server exited with code ${code}`;
-				for (const [, { reject }] of this.pending) reject(new Error(msg));
-			}
+		this.process.on("exit", () => {
+			// normal shutdown kills the server with SIGTERM (exit code 143);
+			// nothing to do here — vscode-jsonrpc owns pending requests.
 		});
 	}
 
-	private handleData(data: string): void {
-		this.buffer += data;
-		while (true) {
-			if (this.contentLength < 0) {
-				const headerEnd = this.buffer.indexOf("\r\n\r\n");
-				if (headerEnd < 0) return;
-				const header = this.buffer.slice(0, headerEnd);
-				const match = header.match(/Content-Length: (\d+)/i);
-				if (!match) {
-					// Malformed — skip
-					this.buffer = this.buffer.slice(headerEnd + 4);
-					continue;
-				}
-				this.contentLength = parseInt(match[1], 10);
-				this.buffer = this.buffer.slice(headerEnd + 4);
-			}
-			if (this.buffer.length < this.contentLength) return; // not enough body yet
-			const body = this.buffer.slice(0, this.contentLength);
-			this.buffer = this.buffer.slice(this.contentLength);
-			this.contentLength = -1;
-			try {
-				const msg: Message = JSON.parse(body);
-				this.handleMessage(msg);
-			} catch {
-				// ignore malformed
-			}
+	async request(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<unknown> {
+		const pending = this.connection.sendRequest(method, params);
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(
+				() => reject(new Error(`LSP request "${method}" timed out after ${timeoutMs}ms`)),
+				timeoutMs,
+			);
+		});
+		try {
+			return await Promise.race([pending, timeout]);
+		} finally {
+			clearTimeout(timer);
+			pending.catch(() => {}); // swallow a late settle after the timeout wins
 		}
-	}
-
-	private handleMessage(msg: Message): void {
-		if (msg.id !== undefined && msg.id !== null) {
-			const pending = this.pending.get(msg.id);
-			if (!pending) return;
-			this.pending.delete(msg.id);
-			if (msg.error) pending.reject(new Error(msg.error.message));
-			else pending.resolve(msg.result);
-		} else if (msg.method) {
-			if (this.onNotification) this.onNotification(msg.method, msg.params);
-		}
-	}
-
-	setNotificationHandler(handler: (method: string, params: unknown) => void): void {
-		this.onNotification = handler;
-	}
-
-	async request(method: string, params?: unknown): Promise<unknown> {
-		const id = this.nextId++;
-		const msg: Message = { jsonrpc: "2.0", id, method, params };
-		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
-			this.send(msg);
-		});
 	}
 
 	notify(method: string, params?: unknown): void {
-		this.send({ jsonrpc: "2.0", method, params });
-	}
-
-	private send(msg: Message): void {
-		const body = JSON.stringify(msg);
-		const header = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`;
-		this.process.stdin!.write(header + body);
+		void this.connection.sendNotification(method, params).catch(() => {
+			// notifications are fire-and-forget; a killed server may reject the
+			// write (EPIPE / stream destroyed) during shutdown.
+		});
 	}
 
 	async initialize(rootUri: string, initializationOptions?: unknown): Promise<unknown> {
 		const rootPath = rootUri.replace("file://", "");
-		return this.request("initialize", {
+		return this.request(InitializeRequest.method, {
 			processId: process.pid,
 			rootUri,
 			workspaceFolders: [{ uri: rootUri, name: rootPath.split("/").pop() || rootPath }],
@@ -120,6 +101,8 @@ export class LspClient {
 				},
 				textDocument: {
 					callHierarchy: { dynamicRegistration: true },
+					typeHierarchy: { dynamicRegistration: true },
+					implementation: { dynamicRegistration: true, linkSupport: true },
 					documentSymbol: { hierarchicalDocumentSymbolSupport: true },
 				},
 			},
@@ -128,73 +111,84 @@ export class LspClient {
 	}
 
 	async initialized(): Promise<void> {
-		this.notify("initialized", {});
+		this.notify(InitializedNotification.method, {});
 	}
 
 	async shutdown(): Promise<void> {
 		try {
-			await this.request("shutdown");
+			await this.request(ShutdownRequest.method, undefined, 3_000);
 		} catch {
-			// ignore
+			// server may already be gone
 		}
-		this.notify("exit");
+		this.notify(ExitNotification.method);
 		this.process.kill();
 	}
 
-	// ── Convenience methods ──────────────────────────────────
-
-	async workspaceSymbols(query: string): Promise<any[]> {
-		const result = (await this.request("workspace/symbol", { query })) as any[];
-		return result ?? [];
-	}
-
-	async documentSymbols(uri: string): Promise<any[]> {
-		const result = (await this.request("textDocument/documentSymbol", {
+	async documentSymbols(uri: string): Promise<DocumentSymbol[]> {
+		const result = await this.request(DocumentSymbolRequest.method, {
 			textDocument: { uri },
-		})) as any[];
-		return result ?? [];
+		});
+		return (Array.isArray(result) ? result : []) as DocumentSymbol[];
 	}
 
-	async references(uri: string, line: number, character: number): Promise<any[]> {
-		const result = (await this.request("textDocument/references", {
+	async references(uri: string, line: number, character: number): Promise<Location[]> {
+		const result = await this.request(ReferencesRequest.method, {
 			textDocument: { uri },
 			position: { line, character },
 			context: { includeDeclaration: false },
-		})) as any[];
-		return result ?? [];
+		});
+		return (Array.isArray(result) ? result : []) as Location[];
 	}
 
-	async incomingCalls(item: { uri: string; range: any; name: string; kind: number }): Promise<any[]> {
-		const result = (await this.request("callHierarchy/incomingCalls", { item })) as any[];
-		return result ?? [];
-	}
-
-	async outgoingCalls(item: { uri: string; range: any; name: string; kind: number }): Promise<any[]> {
-		const result = (await this.request("callHierarchy/outgoingCalls", { item })) as any[];
-		return result ?? [];
-	}
-
-	async prepareCallHierarchy(uri: string, line: number, character: number): Promise<any[]> {
-		const result = (await this.request("textDocument/prepareCallHierarchy", {
+	/** Implementation locations (override/implementer name anchors), normalized from Location or LocationLink. */
+	async implementation(uri: string, line: number, character: number): Promise<Location[]> {
+		const result = await this.request(ImplementationRequest.method, {
 			textDocument: { uri },
 			position: { line, character },
-		})) as any[];
-		return result ?? [];
+		});
+		const arr = Array.isArray(result) ? result : result ? [result] : [];
+		return arr.map((item: any) => {
+			if (item.targetUri) {
+				return { uri: item.targetUri, range: item.targetSelectionRange ?? item.targetRange };
+			}
+			return { uri: item.uri, range: item.range };
+		});
+	}
+
+	async prepareTypeHierarchy(uri: string, line: number, character: number): Promise<TypeHierarchyItem[]> {
+		const result = await this.request(TypeHierarchyPrepareRequest.method, {
+			textDocument: { uri },
+			position: { line, character },
+		});
+		return (Array.isArray(result) ? result : []) as TypeHierarchyItem[];
+	}
+
+	async typeHierarchySubtypes(item: TypeHierarchyItem): Promise<TypeHierarchyItem[]> {
+		const result = await this.request(TypeHierarchySubtypesRequest.method, { item });
+		return (Array.isArray(result) ? result : []) as TypeHierarchyItem[];
+	}
+
+	async prepareCallHierarchy(uri: string, line: number, character: number): Promise<CallHierarchyItem[]> {
+		const result = await this.request(CallHierarchyPrepareRequest.method, {
+			textDocument: { uri },
+			position: { line, character },
+		});
+		return (Array.isArray(result) ? result : []) as CallHierarchyItem[];
+	}
+
+	async outgoingCalls(item: CallHierarchyItem): Promise<CallHierarchyOutgoingCall[]> {
+		const result = await this.request(CallHierarchyOutgoingCallsRequest.method, { item });
+		return (Array.isArray(result) ? result : []) as CallHierarchyOutgoingCall[];
 	}
 
 	async didOpen(uri: string, text: string, languageId: string): Promise<void> {
-		this.notify("textDocument/didOpen", {
-			textDocument: {
-				uri,
-				languageId,
-				version: 1,
-				text,
-			},
+		this.notify(DidOpenTextDocumentNotification.method, {
+			textDocument: { uri, languageId, version: 1, text },
 		});
 	}
 
 	async didChange(uri: string, text: string, version: number): Promise<void> {
-		this.notify("textDocument/didChange", {
+		this.notify(DidChangeTextDocumentNotification.method, {
 			textDocument: { uri, version },
 			contentChanges: [{ text }],
 		});
