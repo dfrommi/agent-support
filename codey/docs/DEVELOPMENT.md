@@ -1,13 +1,13 @@
-# code_graph — Durable Development Context
+# codey — Durable Development Context
 
-Read this before changing `code_graph/` again. It captures the decisions,
+Read this before changing `codey/` again. It captures the decisions,
 rationale, and non-obvious gotchas from the rebuild conversation — the things
 the code alone won't tell you. `design.md` is the sibling doc for extension
 seams; this one is the fuller working memory.
 
 ## Current state (snapshot)
 
-`code_graph/` is a **Java + Rust code-understanding lib + CLI + pi extension**:
+`codey/` is a **Java + Rust code-understanding lib + CLI + pi extension**:
 
 - Lib (`lib/`) is language-agnostic and pure (no LSP/tree-sitter imports).
 - Language layers (`languages/java/`, `languages/rust/`) talk to **jdtls** /
@@ -21,12 +21,12 @@ seams; this one is the fuller working memory.
 ## Layer map
 
 | File | Responsibility |
-|---|---|
+| --- | --- |
 | `lib/model.ts` | Canonical types: `Symbol`, `Location`, `DefinitionLocation`, `ProjectStats` |
 | `lib/adapter.ts` | `LanguageAdapter` port: `discoverSourceFiles`, `indexSymbols`, `findUsages`, `callees`, `close` |
 | `lib/graph.ts` | `CodeGraph`: `symbol`, `find`, `members`, `file`, `findUsages`/`findUsagesOf`, `calleesOf`, `stats`; `createGraph` |
 | `lib/query.ts` | `SymbolQuery` (`where`, `inPath`, `list`, `count`) |
-| `lib/scope.ts` | `Scope = "main" | "test" | "all"`, `inScope` |
+| `lib/scope.ts` | `Scope = "main" | "test" | "all"`,`inScope` |
 | `lib/resolve.ts` | `resolveSymbol`, `findFiles` (deterministic, kind-ranked resolution) |
 | `lib/usages.ts` | `containingSymbol`, `resolveUsageSymbols` (location → innermost symbol) |
 | `lib/session.ts` | cached `getGraph(root, factory)`, `resetGraphs()` |
@@ -130,7 +130,7 @@ seams; this one is the fuller working memory.
   `{ data: [{ path, displayPath, classpathEntry, projectName, projectType }], status: true }`.
   Parse `path` from `data`.
 - **jdtls `documentSymbols`:** method `name` includes parameters
-  (`findById(String)`); `detail` is *only* the return type (` : User`); the
+  (`findById(String)`); `detail` is *only* the return type (`: User`); the
   `selectionRange` is the name token; `range` includes leading Javadoc.
 - **jdtls call hierarchy `detail`** is the *fully-qualified* container
   (`com.example.UserService`) — reconcile against the inventory for simple names.
@@ -184,6 +184,7 @@ seams; this one is the fuller working memory.
 The `code` tool's description/`promptSnippet`/`promptGuidelines` are modeled on
 `codelin` (which the user found "very good at convincing agents"). The winning
 phrases to keep:
+
 - "Prefer this over rg-then-read whenever you know a name."
 - "…rg returns only the text line." / "Do not reconstruct by hand from rg hits."
 - "Use rg/fd only to discover names you don't yet know … then switch to code."
