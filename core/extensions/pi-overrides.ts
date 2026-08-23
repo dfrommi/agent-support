@@ -3,13 +3,13 @@
  * - Disables tools this repo doesn't want active.
  * - Rewrites the bash tool prompt to prefer gitignore-aware binaries
  *   ("find" -> "fd", "grep" -> "rg").
- * - Warns in the bash output whenever a command actually invokes find/grep.
+ * - Blocks bash commands that invoke find/grep, forcing fd/rg instead.
  *
  * The system prompt itself is assembled by `system-prompt-assembler.ts` from
  * `SYSTEM.md`; this module no longer touches it.
  */
 
-import { createBashTool, isBashToolResult, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createBashTool, isToolCallEventType, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parse } from "unbash";
 
 const PI_DOCS_SECTION =
@@ -28,7 +28,7 @@ function swapCommandNames(text: string): string {
 	return text.replace(/\bfind\b/g, "fd").replace(/\bgrep\b/g, "rg");
 }
 
-/** Binary names that trigger a "prefer the gitignore-aware alternative" warning. */
+/** Binary names to block, mapped to their gitignore-aware replacements. */
 const PREFERRED_ALTERNATIVES: Record<string, string> = {
 	find: "fd",
 	grep: "rg",
@@ -62,23 +62,29 @@ function collectCommandNames(node: unknown, names: Set<string>): void {
 	}
 }
 
-function buildWarning(used: string[]): string {
+function buildBlockReason(used: string[]): string {
 	const quoted = used.map((name) => `'${name}'`).join(" and ");
 	const alts = used.map((name) => `'${PREFERRED_ALTERNATIVES[name]}'`).join(" and ");
-	return `\n\n[warning] this command used ${quoted}; prefer ${alts} (respects .gitignore)`;
+	return `Blocked ${quoted}. Use ${alts} instead (faster, .gitignore-aware). Re-run the equivalent command with ${alts}.`;
 }
 
 export default function piOverrides(pi: ExtensionAPI) {
-	// Warn in the bash output whenever the model reaches for find/grep instead
-	// of the gitignore-aware alternatives the prompt already recommends.
-	pi.on("tool_result", (event) => {
-		if (!isBashToolResult(event)) return undefined;
+	// Block find/grep before they run, forcing the gitignore-aware
+	// alternatives the prompt already recommends.
+	pi.on("tool_call", (event) => {
+		if (!isToolCallEventType("bash", event)) return undefined;
 		const command = event.input.command;
 		if (typeof command !== "string") return undefined;
-		const used = usedDiscouragedCommands(command);
+		let used: string[];
+		try {
+			used = usedDiscouragedCommands(command);
+		} catch {
+			// Unparseable command — fail open rather than blocking it.
+			return undefined;
+		}
 		return used.length === 0
 			? undefined
-			: { content: [...event.content, { type: "text", text: buildWarning(used) }] };
+			: { block: true, reason: buildBlockReason(used) };
 	});
 
 	pi.on("session_start", (_event, ctx) => {
