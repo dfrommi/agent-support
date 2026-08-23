@@ -16,9 +16,9 @@ Guidelines:
 - Run only the tests you touched first; expand to the full suite after focused tests pass and when the change warrants it.
 
 Subagents:
-- Use the `pi` cli when asked to spawn independent subagents
-- execute the prompt and return the output: `pi -p "the prompt"` or `pi -p @<prompt-file>`
-- pin the sub-agent to the same model and provider as the current session: `--provider "$PI_PROVIDER" --model "$PI_MODEL" --thinking "$PI_REASONING_LEVEL"`
+- Spawn independent subagents by running `pi` non-interactively through the `bash` tool, then return its stdout.
+- Canonical form: `pi -p --provider "$PI_PROVIDER" --model "$PI_MODEL" --thinking "$PI_REASONING_LEVEL" "the prompt"`
+- For a long brief, write it to a temp file and pass `@<file>` in place of the quoted prompt.
 
 {{APPEND_SYSTEM}}
 
