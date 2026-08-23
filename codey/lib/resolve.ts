@@ -30,6 +30,13 @@ interface Candidate {
 	exactCase: boolean;
 }
 
+/** `com.example.UserService` / `com.example.UserService.findUser`; undefined without a package. */
+function packageQualifiedName(s: Symbol): string | undefined {
+	if (!s.packageName) return undefined;
+	const member = s.containerName && s.containerName !== s.name ? `${s.containerName}.${s.name}` : s.name;
+	return `${s.packageName}.${member}`;
+}
+
 function collectCandidates(graph: CodeGraph, query: string): Candidate[] {
 	const seen = new Set<string>();
 	const out: Candidate[] = [];
@@ -37,13 +44,16 @@ function collectCandidates(graph: CodeGraph, query: string): Candidate[] {
 		for (const s of syms) {
 			if (seen.has(s.id)) continue;
 			seen.add(s.id);
-			out.push({ symbol: s, tier, exactCase: s.name === query });
+			out.push({ symbol: s, tier, exactCase: s.name === query || packageQualifiedName(s) === query });
 		}
 	};
 	const lower = query.toLowerCase();
 	push(graph.symbol(query), 0);
 	push(graph.find(query).list().filter((s) => s.name.toLowerCase() === lower), 1);
 	push(graph.find(query).list(), 2);
+	// Package-qualified matches: `com.example.UserService` or `com.example.UserService.findUser`.
+	push(graph.symbols.filter((s) => packageQualifiedName(s) === query), 0);
+	push(graph.symbols.filter((s) => packageQualifiedName(s)?.toLowerCase() === lower), 1);
 	out.sort(
 		(a, b) =>
 			a.tier - b.tier ||
@@ -80,7 +90,7 @@ function resolveQualified(graph: CodeGraph, query: string, scope: Scope, root?: 
 	if (!container) return null;
 
 	const member = graph.members(container.name).list().find(
-		(m) => m.name.toLowerCase() === memberPart.toLowerCase(),
+		(m) => m.name.toLowerCase() === memberPart.toLowerCase() && m.packageName === container.packageName,
 	);
 	if (!member) return null;
 	return {
@@ -93,7 +103,8 @@ function resolveQualified(graph: CodeGraph, query: string, scope: Scope, root?: 
 
 /** Best-match symbol for a name; `null` when nothing matches. */
 export function resolveSymbol(graph: CodeGraph, query: string, scope: Scope, root?: string): ResolvedSymbol | null {
-	const q = query.trim().replace(/^@/, "");
+	// Accept Rust's `::` (e.g. `TadoIncomingDataSource::new`) as the member separator.
+	const q = query.trim().replace(/^@/, "").replace(/::/g, ".");
 	if (!q) return null;
 
 	const qualified = resolveQualified(graph, q, scope, root);

@@ -58,10 +58,14 @@ export interface Symbol {
 	location: DefinitionLocation;
 	/** Enclosing type, e.g. `UserService`; undefined for top-level symbols. */
 	containerName?: string;
+	/** Package/namespace, e.g. `com.example`; undefined for default-package or non-Java symbols. */
+	packageName?: string;
 	/** Leading annotations, e.g. `["@Override"]`. */
 	annotations?: string[];
 	/** Leading documentation comment (Javadoc), if any. */
 	doc?: string;
+	/** Additional exported names, e.g. `proc_macro_derive`/`proc_macro_attribute` names. */
+	aliases?: string[];
 }
 
 export interface ProjectStats {

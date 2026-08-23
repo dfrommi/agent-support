@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { SymbolKind as LspSymbolKind } from "vscode-languageserver-protocol";
 import type { CallHierarchyItem, CallHierarchyOutgoingCall, DocumentSymbol, Range as LspRange } from "vscode-languageserver-protocol";
 import type { LanguageAdapter, ImplementationCandidate } from "../../lib/adapter.ts";
 import type { Location, Range, Symbol } from "../../lib/model.ts";
@@ -43,7 +44,7 @@ export class JavaAdapter implements LanguageAdapter {
 		const seen = new Set<string>();
 		for (const f of files) {
 			const docSyms = await this.client.documentSymbols(`file://${f}`);
-			const fileSymbols = flattenDocSymbols(docSyms, f);
+			const fileSymbols = flattenDocSymbols(docSyms, f, undefined, packageNameOf(docSyms));
 			await enrichSymbols(f, fileSymbols);
 			for (const sym of fileSymbols) {
 				if (seen.has(sym.id)) continue;
@@ -169,22 +170,28 @@ export class JavaAdapter implements LanguageAdapter {
 
 // ── documentSymbols flattening ──────────────────────────────
 
-function flattenDocSymbols(docSyms: DocumentSymbol[], file: string, containerName?: string): Symbol[] {
+/** Java package name from the top-level `package` node, e.g. `com.example`. */
+function packageNameOf(docSyms: DocumentSymbol[]): string | undefined {
+	const pkg = docSyms.find((d) => d.kind === LspSymbolKind.Package);
+	return pkg?.name || undefined;
+}
+
+function flattenDocSymbols(docSyms: DocumentSymbol[], file: string, containerName?: string, packageName?: string): Symbol[] {
 	const out: Symbol[] = [];
 	for (const d of docSyms) {
 		const kind = lspKindToSymbolKind(d.kind);
 		if (!kind) continue; // package/module/etc — not a code symbol
 		const isContainer = kind === "class" || kind === "interface" || kind === "enum";
-		const sym = toSymbol(d, kind, file, containerName);
+		const sym = toSymbol(d, kind, file, containerName, packageName);
 		if (sym) out.push(sym);
 		if (d.children?.length) {
-			out.push(...flattenDocSymbols(d.children, file, isContainer ? d.name : containerName));
+			out.push(...flattenDocSymbols(d.children, file, isContainer ? d.name : containerName, packageName));
 		}
 	}
 	return out;
 }
 
-function toSymbol(d: DocumentSymbol, kind: Symbol["kind"], file: string, containerName?: string): Symbol | null {
+function toSymbol(d: DocumentSymbol, kind: Symbol["kind"], file: string, containerName?: string, packageName?: string): Symbol | null {
 	if (!d.name) return null;
 	// jdtls reports methods as "findById(String)" — split into a simple name
 	// and keep the parameterized form as the signature.
@@ -203,6 +210,7 @@ function toSymbol(d: DocumentSymbol, kind: Symbol["kind"], file: string, contain
 		file,
 		location: { uri: `file://${file}`, range, nameRange },
 		containerName,
+		packageName,
 	};
 }
 

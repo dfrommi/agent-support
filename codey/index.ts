@@ -6,7 +6,7 @@ import { getGraph, resetGraphs } from "./lib/session.ts";
 import type { SymbolKind } from "./lib/model.ts";
 import type { Scope } from "./lib/scope.ts";
 import { detectLanguage } from "./languages/detect.ts";
-import { explore, search, type SearchParams } from "./render.ts";
+import { explore, search, type SearchParams, type UsagesMode } from "./render.ts";
 
 const ROOT_MARKER_FILES = ["Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts"];
 
@@ -33,11 +33,11 @@ function hasProjectMarker(cwd: string): boolean {
 	return ROOT_MARKER_FILES.some((file) => existsSync(path.join(cwd, file)));
 }
 
-async function warmup(root: string): Promise<void> {
+async function warmup(root: string, onError: (message: string) => void): Promise<void> {
 	try {
 		await getGraph(root, detectLanguage(root).factory);
-	} catch {
-		// surface the error on first tool use, not during session start
+	} catch (e) {
+		onError(`code-graph: failed to index ${root} — ${(e as Error).message}`);
 	}
 }
 
@@ -54,25 +54,28 @@ export default function codeGraphExtension(pi: ExtensionAPI) {
 				label: "Code",
 				description:
 					"One call for a symbol, file, or location: returns source/members, Callees (what it calls), Callers/Usages (who calls it), and Implementations/Subclasses/Overrides. " +
+					"Callers/Usages render as a ranked sample by default; pass usages='full' for the complete list. " +
 					"Prefer over rg+read when you know a name or line.",
 				promptSnippet: "Look up a symbol, file, or location: source + members + callees + callers + implementations in one call",
 				promptGuidelines: [
 					"Use code(name) whenever you know a symbol name (from a file, an rg hit, or a stack trace) — it returns body/members plus Callees, Callers, and Overrides in one call.",
-					"Use code('Container.member') to resolve straight to a member when a bare name is ambiguous.",
+					"Use code('Container.member') to resolve straight to a member when a bare name is ambiguous (Rust `Container::member` works too).",
 					"Use code(file:line) or code(Class:line) to zoom from a listing to the enclosing method's body + Callees + Callers; prefer code over read().",
 					"Use code(file) to outline a file's symbols instead of reading the whole file.",
 					"Read code's Callees / Callers / Implementations sections for 'what X calls', 'who calls X', and 'who implements/overrides X'.",
+					"code() summarizes callers/usages to a ranked sample by default; pass usages='full' when you need every call site.",
 					"Discover unknown names with code_search first; use rg only for literal text, regex, config, comments, and unindexed/generated files.",
 				],
 				parameters: Type.Object({
 					query: Type.String({
-						description: "Symbol name ('UserService', 'UserService.findUser'), file path ('src/.../User.java'), or location ('UserService.java:14', 'UserService:14', 'UserService.java:14-20'); a location resolves to the enclosing method.",
+						description: "Symbol name ('UserService', 'UserService.findUser', Rust 'User::new'), file path ('src/.../User.java'), or location ('UserService.java:14', 'UserService:14', 'UserService.java:14-20'); a location resolves to the enclosing method.",
 					}),
 					scope: Type.Optional(Type.Union([Type.Literal("main"), Type.Literal("test"), Type.Literal("all")], { description: "main/test/all; default all." })),
+					usages: Type.Optional(Type.Union([Type.Literal("summary"), Type.Literal("full")], { description: "summary (default) shows a ranked sample of callers/usages; full lists every call site." })),
 				}),
 				execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 					try {
-						const text = await explore(ctx.cwd, params.query as string, (params.scope as Scope) ?? "all");
+						const text = await explore(ctx.cwd, params.query as string, (params.scope as Scope) ?? "all", (params.usages as UsagesMode | undefined) ?? "summary");
 						return { content: [{ type: "text", text }], details: {} };
 					} catch (e) {
 						return { content: [{ type: "text", text: `Error: ${(e as Error).message}` }], details: {} };
@@ -120,7 +123,10 @@ export default function codeGraphExtension(pi: ExtensionAPI) {
 			});
 		}
 
-		void warmup(ctx.cwd);
+		void warmup(ctx.cwd, (message) => {
+			console.error(message);
+			if (ctx.hasUI) ctx.ui.notify(message, "error");
+		});
 	});
 
 	pi.on("session_shutdown", () => {

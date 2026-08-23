@@ -42,7 +42,7 @@ seams; this one is the fuller working memory.
 | `languages/detect.ts` | marker → `{ adapterFactory, languageId }` |
 | `interfaces/cli.ts` | CLI (testing) |
 | `index.ts` | pi extension: registers `code`, lifecycle warmup/shutdown |
-| `render.ts` | `explore(root, query, scope)` — all resolution + rendering |
+| `render.ts` | `explore(root, query, scope, usages)` — all resolution + rendering |
 
 ## Glossary (precise meanings)
 
@@ -120,9 +120,60 @@ seams; this one is the fuller working memory.
 16. **Activation** gates on `Cargo.toml` / `pom.xml` / `build.gradle(.kts)` at
     session cwd; `Cargo.toml` wins when both are present.
 17. **Caching** (`lib/session.ts`): cached per root; mtime invalidation
-    triggers a *full* re-index through the running adapter; usages/callees are
-    **never cached** (always live LSP). An `opening` map dedupes concurrent
-    `getGraph` calls so warmup + first tool call don't spawn two language servers.
+    triggers an *incremental* re-index of only added/changed files through the
+    running adapter (see #22); usages/callees are **never cached** (always live
+    LSP). An `opening` map dedupes concurrent `getGraph` calls so warmup + first
+    tool call don't spawn two language servers.
+18. **Usages render as a ranked sample by default.** `code` takes
+    `usages: "summary" | "full"` (default `summary`). Summary dedupes call sites
+    by containing symbol (`(×N)`), ranks different-file callers first, caps at
+    `MAX_USAGE_SAMPLE` (5), and prints a `use usages="full"` hint when something
+    is hidden. Grouping/ranking are pure functions in `lib/usages.ts`
+    (`groupUsages`, `rankUsages`, `sampleUsages`), unit-tested without LSP.
+19. **`code_search` ranks by similarity (`fuzzysort`).** The substring filter
+    is unchanged (only *what* matches); results are then ordered by
+    `fuzzysort` score (max over bare + qualified name, across OR'd substrings)
+    desc, then `kindRank`. `fuzzysort@4.0.2` is the one dependency added for
+    this: 0-dep, camelCase/snake_case/dot-boundary aware — chosen over
+    `fast-fuzzy` whose edit-distance ties + earliness tie-break misrank
+    mid-word matches (e.g. `Id` → `HumidityPoint` above `MetricId`).
+20. **Proc-macro derive/attribute names are searchable aliases.** The Rust
+    tree-sitter enricher extracts `#[proc_macro_derive(Name)]` /
+    `#[proc_macro_attribute(Name)]` into `Symbol.aliases`; `searchSymbols`
+    matches and scores aliases alongside bare + qualified names, and `search`
+    renders them as `alias: Name`. So `code_search("StateEnumDerive")` returns
+    `state_enum_derive`. (`aliases` is a canonical model field — language
+    specifics stay in the Rust enricher.)
+21. **Generic trait impls resolve to their implementing type.** For reference
+    anchors, `implementationsOf` normalizes `DataFrame<T>` → `DataFrame`
+    (`plainTypeName`) and, after the name + file match, falls back to a global
+    name match so an impl in a different file than the type still resolves
+    (`code(DataFrameStatsExt)` → `Implementations (1): DataFrame`). Residual
+    edge: duplicate simple type names across modules could match the wrong one;
+    a rust-analyzer `definition` on the self-type token would resolve exactly,
+    if that ever bites.
+22. **Incremental re-index (`lib/session.ts`).** `getGraph` diffs discovered
+    files against the cached mtimes and re-indexes only added/changed files via
+    the running adapter, dropping symbols of removed files and merging the rest.
+    `indexSymbols` already worked on a subset, so this is a session-layer change
+    only. Covered by `test/session-incremental.test.ts` (fake adapter, no LSP).
+23. **LSP requests are cancellable on timeout (`lsp/client.ts`).** `request`
+    passes a `CancellationTokenSource` to `connection.sendRequest` and cancels
+    it on timeout, so vscode-jsonrpc sends `$/cancelRequest` and drops its
+    pending bookkeeping instead of accumulating it.
+24. **Java packages are captured on symbols (`Symbol.packageName`).** The Java
+    adapter reads the top-level `package` node (kind 4) from `documentSymbols`
+    and threads it through `flattenDocSymbols`/`toSymbol`, so every symbol in a
+    packaged file carries its package. `render.ts` prepends it in `code_search`
+    results and `code` "Other matches" via `qualifiedDisplayName`.
+    `resolveSymbol` also accepts package-qualified queries
+    (`com.example.UserService`, `com.example.UserService.findUser`) via
+    `packageQualifiedName`, so search output feeds straight back into `code`.
+25. **Rust `::` is accepted as the member separator.** `resolveSymbol` and
+    `searchSymbols` normalize `::` → `.` at their entry points, so
+    `code("User::new")` and `code_search("User::new")` behave like the
+    `Container.member` forms. Full module paths (`crate::foo::Bar::new`) are
+    still unsupported pending Rust module resolution.
 
 ## Non-obvious gotchas
 
@@ -202,17 +253,16 @@ never node ids.
 - **Project/package overview** — no way to enumerate top-level types without a
   known name.
 - **Type relationships** (extends/implements) — not extracted yet.
-- **Package/qualified names** — only `containerName` (immediate, simple) exists.
+- **Rust module paths (qualified names)** — Java packages are captured
+  (`Symbol.packageName`, see #24); Rust qualified paths would need module
+  resolution across files.
 - **Pseudo-symbols** (HTTP endpoints from `@RequestMapping`, etc.) — long-term;
   annotations are already captured.
 - **Rust workspaces + custom `[lib] path`** — the adapter walks the standard
   single-crate layout (`src/`, `tests/`, `examples/`, `benches/`) only.
 - **`#[cfg(test)]` scope detection** — a container named `test`/`tests` counts
   as test scope; nested helper modules under it still count as `main`.
-- **Incremental re-index** — currently any mtime change re-indexes *all* files.
 - **Usage resolution is O(usages × symbols)** — indexable by file later.
 - **`getGraph` re-runs `listSourcePaths` every call** — acceptable now.
-- **`request` timeout doesn't cancel the underlying `sendRequest`** — pending
-  accumulates on repeated timeouts.
 - **Empty container renders no body** (only header + usages).
 - **`resolve.ts` calls `graph.find(query).list()` twice** — minor.

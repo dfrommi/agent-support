@@ -76,6 +76,13 @@ describe("resolveSymbol", () => {
 		assert.equal(res.primary.containerName, "UserRepository");
 	});
 
+	it("accepts Rust's `::` as the member separator", () => {
+		const res = resolveSymbol(graph, "UserRepository::findById", "all");
+		assert.ok(res);
+		assert.equal(res.primary.name, "findById");
+		assert.equal(res.primary.containerName, "UserRepository");
+	});
+
 	it("falls back to case-insensitive match", () => {
 		const res = resolveSymbol(graph, "userrepository", "all");
 		assert.ok(res);
@@ -88,6 +95,24 @@ describe("resolveSymbol", () => {
 		assert.ok(res);
 		assert.equal(res.primary.name, "CatalogService");
 		assert.equal(res.outOfScope, true);
+	});
+
+	it("resolves package-qualified type and member names", () => {
+		const user = sym("pkg-user", "User", "class", `${MAIN}/User.java`, 3, 10);
+		user.packageName = "com.example";
+		const repo = sym("pkg-repo", "UserRepository", "class", `${MAIN}/UserRepository.java`, 3, 9);
+		repo.packageName = "com.example";
+		const findById = sym("pkg-find", "findById", "method", `${MAIN}/UserRepository.java`, 4, 6, "UserRepository");
+		findById.packageName = "com.example";
+		const g = new CodeGraph([user, repo, findById], [...new Set([user.file, repo.file])]);
+
+		const type = resolveSymbol(g, "com.example.User", "all");
+		assert.ok(type);
+		assert.equal(type.primary.id, "pkg-user");
+
+		const member = resolveSymbol(g, "com.example.UserRepository.findById", "all");
+		assert.ok(member);
+		assert.equal(member.primary.id, "pkg-find");
 	});
 });
 

@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { CallHierarchyItem, CallHierarchyOutgoingCall, DocumentSymbol, Range as LspRange } from "vscode-languageserver-protocol";
@@ -18,21 +19,29 @@ export class RustAdapter implements LanguageAdapter {
 	private client: LspClient;
 	private fileContent = new Map<string, string>();
 	private version = 1;
+	private packageRoots: string[];
 
-	private constructor(client: LspClient) {
+	private constructor(client: LspClient, packageRoots: string[]) {
 		this.client = client;
+		this.packageRoots = packageRoots;
 	}
 
 	static async connect(root: string): Promise<RustAdapter> {
 		const client = await createRustServer(root);
-		return new RustAdapter(client);
+		return new RustAdapter(client, discoverPackageRoots(root));
 	}
 
-	/** Cargo-standard source roots; workspaces and custom `[lib] path` are deferred. */
-	async discoverSourceFiles(root: string): Promise<string[]> {
+	/**
+	 * Cargo-standard source roots under every package in the workspace (members
+	 * and path dependencies). `packageRoots` is resolved once at connect, so
+	 * re-discovery is a pure directory walk and cache checks stay cheap.
+	 */
+	async discoverSourceFiles(_root: string): Promise<string[]> {
 		const files = new Set<string>();
-		for (const dir of ["src", "tests", "examples", "benches"]) {
-			collectRustFiles(path.join(root, dir), files);
+		for (const pkgRoot of this.packageRoots) {
+			for (const dir of ["src", "tests", "examples", "benches"]) {
+				collectRustFiles(path.join(pkgRoot, dir), files);
+			}
 		}
 		return [...files].sort();
 	}
@@ -274,6 +283,32 @@ function stripGenerics(s: string): string {
 		if (close !== -1) out = out.slice(close + 1).trim();
 	}
 	return out.replace(/<.*>$/, "").trim();
+}
+
+/**
+ * Resolve every Cargo package root via `cargo metadata --no-deps` (workspace
+ * members and path dependencies). Falls back to the workspace root when cargo
+ * is unavailable or the directory is not a Cargo project.
+ */
+function discoverPackageRoots(root: string): string[] {
+	try {
+		const out = execSync("cargo metadata --no-deps --format-version 1", {
+			cwd: root,
+			encoding: "utf8",
+			timeout: 30_000,
+			maxBuffer: 16 * 1024 * 1024,
+		});
+		const packages = (JSON.parse(out) as { packages?: { manifest_path: string }[] }).packages ?? [];
+		const roots = new Set<string>();
+		for (const pkg of packages) {
+			const dir = path.dirname(pkg.manifest_path);
+			if (dir) roots.add(dir);
+		}
+		if (roots.size > 0) return [...roots].sort();
+	} catch {
+		// cargo missing or not a Cargo project — walk the root only
+	}
+	return [root];
 }
 
 function collectRustFiles(dir: string, out: Set<string>): void {

@@ -7,7 +7,7 @@ import { findFiles, resolveSymbol, type ResolvedSymbol } from "./lib/resolve.ts"
 import { locateCallable, type LineSpan } from "./lib/locate.ts";
 import { inScope, type Scope } from "./lib/scope.ts";
 import { kindHistogram, searchSymbols } from "./lib/search.ts";
-import { resolveUsageSymbols, type ResolvedUsage } from "./lib/usages.ts";
+import { resolveUsageSymbols, sampleUsages, type ResolvedUsage, type UsageGroup } from "./lib/usages.ts";
 import { uriToFile } from "./lib/uri.ts";
 import { detectLanguage } from "./languages/detect.ts";
 
@@ -15,22 +15,29 @@ import { detectLanguage } from "./languages/detect.ts";
 
 const MAX_BODY_LINES = 200;
 const MAX_OUTPUT_CHARS = 40000;
-const MAX_USAGES = 20;
-const MAX_CALLEES = 20;
 const MAX_MEMBERS = 50;
 const MAX_OTHER_MATCHES = 10;
 const MAX_SEARCH_RESULTS = 40;
-const MAX_IMPLEMENTATIONS = 20;
+const MAX_USAGE_SAMPLE = 5;
 
 const CONTAINER_KINDS = new Set<SymbolKind>(["class", "interface", "enum", "struct", "trait", "module"]);
 const CALLEE_KINDS = new Set<SymbolKind>(["method", "constructor", "function"]);
 const IMPLEMENTATION_KINDS = new Set<SymbolKind>(["class", "interface", "enum", "struct", "trait", "module", "method", "function"]);
+
+/** How much of the usages section to render. */
+export type UsagesMode = "summary" | "full";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function displayName(s: Symbol): string {
 	if (!s.containerName || s.name === s.containerName) return s.name;
 	return `${s.containerName}.${s.name}`;
+}
+
+/** Display name with the package prepended, when present (for disambiguating search/other-matches). */
+function qualifiedDisplayName(s: Symbol): string {
+	const base = displayName(s);
+	return s.packageName ? `${s.packageName}.${base}` : base;
 }
 
 /** Root-relative when the file is inside the project, absolute otherwise. */
@@ -61,13 +68,34 @@ function byLocation(a: ResolvedUsage, b: ResolvedUsage): number {
 		a.location.range.start.column - b.location.range.start.column;
 }
 
+function bySymbolLocation(a: Symbol, b: Symbol): number {
+	return a.file.localeCompare(b.file) ||
+		a.location.nameRange.start.line - b.location.nameRange.start.line ||
+		a.location.nameRange.start.column - b.location.nameRange.start.column;
+}
+
+/** Group items by a string key, most common group first. */
+function groupBy<T>(items: T[], key: (t: T) => string): [string, T[]][] {
+	const groups = new Map<string, T[]>();
+	for (const t of items) {
+		const k = key(t);
+		const list = groups.get(k) ?? [];
+		list.push(t);
+		groups.set(k, list);
+	}
+	return [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+}
+
 function formatCallees(callees: Symbol[], root: string): string {
 	if (callees.length === 0) return "Callees: (none)";
-	const list = callees.slice(0, MAX_CALLEES).map(
-		(c) => `- ${displayName(c)} (${c.kind}) — ${displayPath(c.file, root)}:${c.location.nameRange.start.line}`,
-	);
-	const more = callees.length > MAX_CALLEES ? `\n- … +${callees.length - MAX_CALLEES} more` : "";
-	return `Callees (${callees.length}):\n${list.join("\n")}${more}`;
+	const lines: string[] = [];
+	for (const [kind, items] of groupBy(callees, (s) => s.kind)) {
+		lines.push(`- ${kind} (${items.length})`);
+		for (const s of items.sort(bySymbolLocation)) {
+			lines.push(`  - ${displayName(s)} — ${displayPath(s.file, root)}:${s.location.nameRange.start.line}`);
+		}
+	}
+	return `Callees (${callees.length}):\n${lines.join("\n")}`;
 }
 
 function implementationLabel(kind: SymbolKind): string {
@@ -84,26 +112,66 @@ function renderImplementations(sym: Symbol, implementations: Symbol[], error: st
 	const label = implementationLabel(sym.kind);
 	if (error) return `${label}: (unavailable — ${error})`;
 	if (implementations.length === 0) return `${label}: (none)`;
-	const shown = implementations.slice(0, MAX_IMPLEMENTATIONS);
-	const lines = shown.map(
-		(s) => `- ${displayName(s)} (${s.kind}) — ${displayPath(s.file, root)}:${s.location.nameRange.start.line}`,
-	);
-	const more = implementations.length > MAX_IMPLEMENTATIONS ? `\n- … +${implementations.length - MAX_IMPLEMENTATIONS} more` : "";
-	return `${label} (${implementations.length}):\n${lines.join("\n")}${more}`;
+	const lines: string[] = [];
+	for (const [kind, items] of groupBy(implementations, (s) => s.kind)) {
+		lines.push(`- ${kind} (${items.length})`);
+		for (const s of items.sort(bySymbolLocation)) {
+			lines.push(`  - ${displayName(s)} — ${displayPath(s.file, root)}:${s.location.nameRange.start.line}`);
+		}
+	}
+	return `${label} (${implementations.length}):\n${lines.join("\n")}`;
 }
 
-function formatUsages(usages: ResolvedUsage[], label: string, root: string): string {
+function formatUsagesFull(usages: ResolvedUsage[], label: string, root: string): string {
+	const lines: string[] = [];
+	for (const [kind, items] of groupBy(usages, (u) => u.symbol?.kind ?? "reference")) {
+		lines.push(`- ${kind} (${items.length})`);
+		for (const u of items.sort(byLocation)) {
+			const where = `${displayPath(uriToFile(u.location.uri), root)}:${u.location.range.start.line}`;
+			if (u.symbol) {
+				lines.push(`  - ${displayName(u.symbol)} — ${where}`);
+			} else {
+				const snippet = readLineSnippet(u.location.uri, u.location.range.start.line);
+				lines.push(snippet ? `  - ${where} — ${snippet}` : `  - ${where}`);
+			}
+		}
+	}
+	return `${label} (${usages.length}):\n${lines.join("\n")}`;
+}
+
+function usageKindHistogram(usages: ResolvedUsage[]): string {
+	const counts = new Map<string, number>();
+	for (const u of usages) {
+		const kind = u.symbol?.kind ?? "reference";
+		counts.set(kind, (counts.get(kind) ?? 0) + 1);
+	}
+	return [...counts.entries()]
+		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+		.map(([kind, count]) => `${kind} ${count}`)
+		.join(", ");
+}
+
+function formatUsageGroup(g: UsageGroup, root: string): string {
+	const where = `${displayPath(uriToFile(g.location.uri), root)}:${g.location.range.start.line}`;
+	const suffix = g.count > 1 ? ` (×${g.count})` : "";
+	if (g.symbol) return `  - ${displayName(g.symbol)} — ${where}${suffix}`;
+	const snippet = readLineSnippet(g.location.uri, g.location.range.start.line);
+	return snippet ? `  - ${where} — ${snippet}${suffix}` : `  - ${where}${suffix}`;
+}
+
+function formatUsagesSummary(usages: ResolvedUsage[], label: string, root: string, definitionFile: string): string {
+	const { shown, hidden } = sampleUsages(usages, definitionFile, MAX_USAGE_SAMPLE);
+	const lines = [`${label} (${usages.length}): ${usageKindHistogram(usages)}`];
+	for (const g of shown) lines.push(formatUsageGroup(g, root));
+	if (hidden > 0) {
+		lines.push(`… +${hidden} more — use usages="full" for all ${usages.length}`);
+	}
+	return lines.join("\n");
+}
+
+function formatUsages(usages: ResolvedUsage[], label: string, root: string, mode: UsagesMode, definitionFile: string): string {
 	if (usages.length === 0) return `${label}: (none)`;
-	const sorted = [...usages].sort(byLocation);
-	const shown = sorted.slice(0, MAX_USAGES);
-	const lines = shown.map((u) => {
-		const where = `${displayPath(uriToFile(u.location.uri), root)}:${u.location.range.start.line}`;
-		if (u.symbol) return `- ${displayName(u.symbol)} (${u.symbol.kind}) — ${where}`;
-		const snippet = readLineSnippet(u.location.uri, u.location.range.start.line);
-		return snippet ? `- ${where} — ${snippet}` : `- ${where}`;
-	});
-	const more = usages.length > MAX_USAGES ? `\n- … +${usages.length - MAX_USAGES} more` : "";
-	return `${label} (${usages.length}):\n${lines.join("\n")}${more}`;
+	return mode === "full" ? formatUsagesFull(usages, label, root) : formatUsagesSummary(usages, label, root, definitionFile);
 }
 
 interface SymbolSections {
@@ -154,7 +222,7 @@ function renderBody(code: string, languageId: string): string[] {
 	return out;
 }
 
-async function renderSymbol(graph: CodeGraph, sym: Symbol, languageId: string, root: string, scope: Scope): Promise<string> {
+async function renderSymbol(graph: CodeGraph, sym: Symbol, languageId: string, root: string, scope: Scope, mode: UsagesMode): Promise<string> {
 	const start = sym.location.nameRange.start.line;
 	const end = sym.location.range.end.line;
 	const loc = end !== start ? `${start}-${end}` : `${start}`;
@@ -230,7 +298,7 @@ async function renderSymbol(graph: CodeGraph, sym: Symbol, languageId: string, r
 	if (CALLEE_KINDS.has(sym.kind)) {
 		parts.push(sections.calleeError ? `Callees: (unavailable — ${sections.calleeError})` : formatCallees(sections.callees, root));
 	}
-	parts.push(sections.usageError ? `${usagesLabel}: (unavailable — ${sections.usageError})` : formatUsages(sections.usages, usagesLabel, root));
+	parts.push(sections.usageError ? `${usagesLabel}: (unavailable — ${sections.usageError})` : formatUsages(sections.usages, usagesLabel, root, mode, sym.file));
 	if (IMPLEMENTATION_KINDS.has(sym.kind)) {
 		parts.push(renderImplementations(sym, sections.implementations, sections.implError, root));
 	}
@@ -287,17 +355,17 @@ function renderFileQuery(graph: CodeGraph, query: string, root: string): string 
 	return `"${query}" matches ${files.length} files — narrow the path:\n${list}${more}`;
 }
 
-async function renderResolved(graph: CodeGraph, res: ResolvedSymbol, scope: Scope, languageId: string, root: string): Promise<string> {
+async function renderResolved(graph: CodeGraph, res: ResolvedSymbol, scope: Scope, languageId: string, root: string, mode: UsagesMode): Promise<string> {
 	const { primary, others, tier, outOfScope } = res;
 	const tierNote = tier === 1 ? " (case-insensitive match)" : tier === 2 ? " (substring match)" : "";
 	const scopeNote = outOfScope ? ` (outside scope "${scope}")` : "";
-	const body = await renderSymbol(graph, primary, languageId, root, scope);
+	const body = await renderSymbol(graph, primary, languageId, root, scope, mode);
 	const note = [tierNote, scopeNote].filter(Boolean).join("");
 	const sections = [note ? `${body}\n${note}` : body];
 
 	if (others.length > 0) {
 		const shown = others.slice(0, MAX_OTHER_MATCHES);
-		const lines = shown.map((n) => `- ${displayName(n)} (${n.kind}) — ${displayPath(n.file, root)}:${n.location.nameRange.start.line}`);
+		const lines = shown.map((n) => `- ${qualifiedDisplayName(n)} (${n.kind}) — ${displayPath(n.file, root)}:${n.location.nameRange.start.line}`);
 		const more = others.length > MAX_OTHER_MATCHES ? `\n- … +${others.length - MAX_OTHER_MATCHES} more` : "";
 		sections.push(`Other matches:\n${lines.join("\n")}${more}`);
 	}
@@ -328,7 +396,7 @@ function looksLikeFile(target: string): boolean {
 	return target.includes("/") || SOURCE_FILE_RE.test(target);
 }
 
-async function renderLocation(graph: CodeGraph, loc: LocationQuery, scope: Scope, languageId: string, root: string): Promise<string> {
+async function renderLocation(graph: CodeGraph, loc: LocationQuery, scope: Scope, languageId: string, root: string, mode: UsagesMode): Promise<string> {
 	const span: LineSpan = { startLine: loc.startLine, endLine: loc.endLine };
 	let file: string;
 	let within: LineSpan | undefined;
@@ -367,11 +435,11 @@ async function renderLocation(graph: CodeGraph, loc: LocationQuery, scope: Scope
 		const where = loc.endLine > loc.startLine ? `lines ${loc.startLine}-${loc.endLine}` : `line ${loc.startLine}`;
 		return `${where} of ${displayPath(file, root)} is not inside a method/function — location queries resolve only lines inside methods. Use code(<Class>) for class-level output or code(<file>) for a file outline.`;
 	}
-	return capOutput(await renderSymbol(graph, sym, languageId, root, scope));
+	return capOutput(await renderSymbol(graph, sym, languageId, root, scope, mode));
 }
 
 /** Resolve a symbol or file to a single read-equivalent text block. */
-export async function explore(root: string, query: string, scope: Scope = "all"): Promise<string> {
+export async function explore(root: string, query: string, scope: Scope = "all", mode: UsagesMode = "summary"): Promise<string> {
 	const resolved = path.resolve(root);
 	const { factory, languageId } = detectLanguage(resolved);
 	const graph = await getGraph(resolved, factory);
@@ -380,9 +448,9 @@ export async function explore(root: string, query: string, scope: Scope = "all")
 
 	if (!/\s/.test(q)) {
 		const loc = parseLocation(q);
-		if (loc) return await renderLocation(graph, loc, scope, languageId, resolved);
+		if (loc) return await renderLocation(graph, loc, scope, languageId, resolved, mode);
 		const res = resolveSymbol(graph, q, scope, resolved);
-		if (res) return await renderResolved(graph, res, scope, languageId, resolved);
+		if (res) return await renderResolved(graph, res, scope, languageId, resolved, mode);
 	}
 
 	const fileOut = renderFileQuery(graph, q, resolved);
@@ -423,7 +491,8 @@ export async function search(root: string, params: SearchParams): Promise<string
 	const lines = shown.map((s) => {
 		const where = `${displayPath(s.file, resolved)}:${s.location.nameRange.start.line}`;
 		const sig = s.signature ? ` — \`${s.signature.replace(/\s+/g, " ").trim()}\`` : "";
-		return `- ${displayName(s)} (${s.kind}) — ${where}${sig}`;
+		const aliases = s.aliases?.length ? ` — alias: ${s.aliases.join(", ")}` : "";
+		return `- ${qualifiedDisplayName(s)} (${s.kind}) — ${where}${sig}${aliases}`;
 	});
 	if (symbols.length > MAX_SEARCH_RESULTS) {
 		lines.push(`… +${symbols.length - MAX_SEARCH_RESULTS} more (by kind: ${kindHistogram(symbols)}) — narrow with includeKinds/excludeKinds/path or more specific substrings`);

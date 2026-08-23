@@ -52,6 +52,8 @@ export async function enrichSymbols(file: string, symbols: Symbol[]): Promise<vo
 			if (!meta) continue;
 			if (meta.attributes.length > 0) sym.annotations = meta.attributes;
 			if (meta.doc) sym.doc = meta.doc;
+			const aliases = procMacroNames(meta.attributes);
+			if (aliases.length > 0) sym.aliases = aliases;
 		}
 	} finally {
 		tree.delete();
@@ -109,4 +111,14 @@ function extractMeta(decl: SyntaxNode): Meta {
 
 function isDocComment(text: string): boolean {
 	return text.startsWith("///") || text.startsWith("//!") || text.startsWith("/**");
+}
+
+/** `#[proc_macro_derive(Name)]` / `#[proc_macro_attribute(Name)]` → exported macro name. */
+function procMacroNames(attributes: string[]): string[] {
+	const names: string[] = [];
+	for (const attr of attributes) {
+		const m = /#\[\s*proc_macro_(?:derive|attribute)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)/.exec(attr);
+		if (m) names.push(m[1]);
+	}
+	return names;
 }

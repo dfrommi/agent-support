@@ -21,12 +21,14 @@ When loaded by pi and the session cwd has `Cargo.toml`, `pom.xml`, or
 
 - `code("UserService")` / `code("UserService.findUser")` — resolve a symbol and
   return source/members, doc/annotations, usages, and implementations/overrides
-  in one call. `code("UserService.java:14")` / `code("UserService:14")` resolve a
-  location to the outermost method containing that line (same output as a method
-  query).
-- `code_search({ substrings: ["find"], includeKinds: ["method"] })` — list ranked
-  symbol matches (name, kind, container, file:line, signature) to discover names
-  before calling `code`.
+  in one call. Callers/Usages render as a ranked, deduped sample by default;
+  pass `usages="full"` for the complete list. `code("UserService.java:14")` /
+  `code("UserService:14")` resolve a location to the outermost method containing
+  that line (same output as a method query).
+- `code_search({ substrings: ["find"], includeKinds: ["method"] })` — list
+  similarity-ranked symbol matches (name, kind, container, file:line, signature)
+  to discover names before calling `code`. Exact/prefix/camelCase-boundary
+  matches rank above mid-word substring matches.
 
 The graph is warmed at session start and kept fresh via mtime invalidation;
 usages are always live from LSP.

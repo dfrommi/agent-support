@@ -49,6 +49,11 @@ describe("code tool rendering", () => {
 		assert.ok(text.includes("matches for"));
 	});
 
+	it("shows the Java package in search results", async () => {
+		const text = await search(FIXTURE, { substrings: ["UserService"], scope: "all" });
+		assert.ok(text.includes("com.example.UserService"));
+	});
+
 	it("resolves a file:line to the enclosing method", async () => {
 		const text = await explore(FIXTURE, "UserRepository.java:8", "all");
 		assert.ok(text.includes("findById"));
@@ -93,5 +98,18 @@ describe("code tool rendering", () => {
 		const text = await explore(FIXTURE, "UserService.validateId", "all");
 		assert.ok(text.includes("Overrides: (none)"));
 		assert.ok(text.includes("Callees: (none)"));
+	});
+
+	it("summarizes callers by default with a kind histogram", async () => {
+		const text = await explore(FIXTURE, "findById", "all");
+		assert.ok(text.includes("Callers (1): method 1"));
+		assert.ok(text.includes("findUser"));
+	});
+
+	it("lists every call site with usages=full", async () => {
+		const text = await explore(FIXTURE, "findById", "all", "full");
+		assert.ok(text.includes("Callers (1):"));
+		assert.ok(text.includes("- method (1)"));
+		assert.ok(text.includes("findUser"));
 	});
 });

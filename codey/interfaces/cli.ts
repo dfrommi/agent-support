@@ -16,7 +16,7 @@ Usage:
   node interfaces/cli.ts <directory> file <path>           Symbols in a file
   node interfaces/cli.ts <directory> detail <name>         Show one symbol incl. annotations + doc
   node interfaces/cli.ts <directory> find-usages <name>    Find usages [--kind <k>] [--container <c>] [--signature <sig>]
-  node interfaces/cli.ts <directory> code <query>          Render the pi code-tool output [--scope <main|test|all>]
+  node interfaces/cli.ts <directory> code <query>          Render the pi code-tool output [--scope <main|test|all>] [--usages <summary|full>]
   node interfaces/cli.ts <directory> search <substr> [...]  Search symbols [--include <k,...>] [--exclude <k,...>] [--scope <main|test|all>] [--path <glob>]
   node interfaces/cli.ts <directory> --stats               Index stats
 
@@ -42,8 +42,9 @@ async function main(): Promise<void> {
 			process.exit(1);
 		}
 		const scope = parseScope(rest.slice(1));
+		const usages = parseUsages(rest.slice(1));
 		try {
-			console.log(await explore(root, query, scope));
+			console.log(await explore(root, query, scope, usages));
 		} finally {
 			// explore() keeps the session's language server alive; close it so the
 			// process can exit.
@@ -167,6 +168,11 @@ function parseScope(args: string[]): Scope {
 	const i = args.indexOf("--scope");
 	const value = i !== -1 ? args[i + 1] : "all";
 	return value === "main" || value === "test" || value === "all" ? value : "all";
+}
+
+function parseUsages(args: string[]): "summary" | "full" {
+	const i = args.indexOf("--usages");
+	return args[i + 1] === "full" ? "full" : "summary";
 }
 
 function parseSearch(args: string[]): { substrings: string[]; includeKinds?: SymbolKind[]; excludeKinds?: SymbolKind[]; scope: Scope; path?: string } {

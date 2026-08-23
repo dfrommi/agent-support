@@ -101,9 +101,12 @@ export class CodeGraph {
 		const out: Symbol[] = [];
 		for (const cand of candidates) {
 			// Declaration anchors resolve by containment; reference anchors (e.g.
-			// Rust `impl Trait for Type`) fall back to a name + file match.
+			// Rust `impl Trait for Type`) fall back to name matching. Generic self
+			// types (`DataFrame<T>`) normalize to their plain type name, and a
+			// global name match covers impls living in a different file than the type.
+			const name = cand.name ? plainTypeName(cand.name) : undefined;
 			const s = containingSymbol(this, cand) ??
-				(cand.name ? this.symbols.find((x) => x.file === uriToFile(cand.uri) && x.name === cand.name) : undefined);
+				(name ? this.symbols.find((x) => x.file === uriToFile(cand.uri) && x.name === name) ?? this.symbols.find((x) => x.name === name) : undefined);
 			// A symbol is never its own subtype/override.
 			if (s && s.id !== symbol.id && !seen.has(s.id)) {
 				seen.add(s.id);
@@ -116,6 +119,11 @@ export class CodeGraph {
 	stats(): ProjectStats {
 		return { files: this.files.length, symbols: this.symbols.length };
 	}
+}
+
+/** `DataFrame<T>` → `DataFrame`; a declared symbol's simple name never carries type parameters. */
+function plainTypeName(name: string): string {
+	return name.replace(/<.*>$/, "").trim();
 }
 
 function describeMatches(name: string, matches: Symbol[]): string {

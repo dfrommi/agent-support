@@ -1,3 +1,4 @@
+import fuzzysort from "fuzzysort";
 import path from "node:path";
 import type { CodeGraph } from "./graph.ts";
 import type { Symbol, SymbolKind } from "./model.ts";
@@ -20,13 +21,29 @@ function qualifiedName(s: Symbol): string {
 	return s.containerName && s.containerName !== s.name ? `${s.containerName}.${s.name}` : s.name;
 }
 
-/** OR semantics: a symbol matches when any substring appears in its bare or qualified name. */
+/** OR semantics: a symbol matches when any substring appears in its bare, qualified, or alias names. */
+function searchableNames(s: Symbol): string[] {
+	return [s.name, qualifiedName(s), ...(s.aliases ?? [])];
+}
+
 function matchesAny(s: Symbol, terms: string[]): boolean {
-	const haystacks = [s.name.toLowerCase(), qualifiedName(s).toLowerCase()];
+	const haystacks = searchableNames(s).map((n) => n.toLowerCase());
 	return terms.some((term) => {
 		const lower = term.toLowerCase();
 		return haystacks.some((h) => h.includes(lower));
 	});
+}
+
+/** Best similarity score across the symbol's bare, qualified, and alias names, over all substrings. */
+function matchScore(s: Symbol, terms: string[]): number {
+	let best = -1;
+	for (const term of terms) {
+		for (const name of searchableNames(s)) {
+			const r = fuzzysort.single(term, name);
+			if (r && r.score > best) best = r.score;
+		}
+	}
+	return best;
 }
 
 function pathMatcher(pattern: string, root: string): (file: string) => boolean {
@@ -39,29 +56,34 @@ function pathMatcher(pattern: string, root: string): (file: string) => boolean {
  * in-memory over the canonical model — no language or I/O concerns.
  */
 export function searchSymbols(graph: CodeGraph, options: SearchOptions): Symbol[] {
-	const terms = options.substrings.map((t) => t.trim()).filter(Boolean);
+	// Accept Rust's `::` as the member separator, same as resolution does.
+	const terms = options.substrings.map((t) => t.trim().replace(/::/g, ".")).filter(Boolean);
 	if (terms.length === 0) return [];
 
 	const include = new Set(options.includeKinds ?? []);
 	const exclude = new Set(options.excludeKinds ?? []);
 	const pathMatches = options.path ? pathMatcher(options.path, options.root) : undefined;
 
-	return graph.symbols
-		.filter(
-			(s) =>
-				matchesAny(s, terms) &&
-				(include.size === 0 || include.has(s.kind)) &&
-				!exclude.has(s.kind) &&
-				inScope(s.file, options.scope, s.containerName, options.root) &&
-				(!pathMatches || pathMatches(s.file)),
-		)
-		.sort(
-			(a, b) =>
-				kindRank(a.kind) - kindRank(b.kind) ||
-				a.name.localeCompare(b.name) ||
-				a.file.localeCompare(b.file) ||
-				a.location.nameRange.start.line - b.location.nameRange.start.line,
-		);
+	const matched = graph.symbols.filter(
+		(s) =>
+			matchesAny(s, terms) &&
+			(include.size === 0 || include.has(s.kind)) &&
+			!exclude.has(s.kind) &&
+			inScope(s.file, options.scope, s.containerName, options.root) &&
+			(!pathMatches || pathMatches(s.file)),
+	);
+
+	const scores = new Map<string, number>();
+	for (const s of matched) scores.set(s.id, matchScore(s, terms));
+
+	return matched.sort(
+		(a, b) =>
+			(scores.get(b.id) ?? -1) - (scores.get(a.id) ?? -1) ||
+			kindRank(a.kind) - kindRank(b.kind) ||
+			a.name.localeCompare(b.name) ||
+			a.file.localeCompare(b.file) ||
+			a.location.nameRange.start.line - b.location.nameRange.start.line,
+	);
 }
 
 /** Compact kind breakdown, e.g. "method 120, field 90, class 12". */

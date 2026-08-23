@@ -74,6 +74,15 @@ describe("implementationsOf", () => {
 		assert.deepEqual(impls.map((s) => s.id), ["impl"]);
 	});
 
+	it("normalizes generic self types and matches across files", async () => {
+		// `impl<T> Repo<T> for RepoImpl<T>`: the anchor name carries generics and
+		// lives in a different file than the RepoImpl declaration.
+		const cand = { ...loc(`file://${FILE}`, 7), name: "RepoImpl<T>" };
+		const graph = new CodeGraph(SYMBOLS, FILES, adapter(async () => [cand]));
+		const impls = await graph.implementationsOf(repoIface);
+		assert.deepEqual(impls.map((s) => s.id), ["impl"]);
+	});
+
 	it("excludes the queried symbol itself", async () => {
 		// `implementation` on a struct can return the struct's own name anchor.
 		const graph = new CodeGraph(SYMBOLS, FILES, adapter(async () => [loc(`file://${FILE}`, 3)]));

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import {
+	CancellationTokenSource,
 	createMessageConnection,
 	NullLogger,
 	StreamMessageReader,
@@ -28,6 +29,7 @@ import {
 } from "vscode-languageserver-protocol";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const STDERR_TAIL_CHARS = 8_192;
 
 /**
  * Minimal LSP client over stdio, built on vscode-jsonrpc for framing/transport
@@ -36,6 +38,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export class LspClient {
 	private process: ChildProcess;
 	private connection: MessageConnection;
+	private stderrTail = "";
 
 	constructor(command: string, args: string[], cwd: string, env?: Record<string, string>) {
 		this.process = spawn(command, args, {
@@ -51,8 +54,11 @@ export class LspClient {
 		);
 		this.connection.listen();
 
+		// The language server's stderr is diagnostic noise (progress, harmless
+		// warnings like a missing optional config file), not user-facing output.
+		// Buffer it and surface it only when a request actually fails.
 		this.process.stderr!.on("data", (chunk: Buffer) => {
-			process.stderr.write(`[lsp:stderr] ${chunk}`);
+			this.stderrTail = (this.stderrTail + chunk.toString()).slice(-STDERR_TAIL_CHARS);
 		});
 		this.process.on("error", (e) => {
 			this.connection.dispose();
@@ -65,20 +71,32 @@ export class LspClient {
 	}
 
 	async request(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<unknown> {
-		const pending = this.connection.sendRequest(method, params);
+		// A cancellation token lets us send `$/cancelRequest` on timeout, so the
+		// connection drops its pending bookkeeping instead of accumulating it.
+		const source = new CancellationTokenSource();
+		const pending = this.connection.sendRequest(method, params, source.token);
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const timeout = new Promise<never>((_, reject) => {
-			timer = setTimeout(
-				() => reject(new Error(`LSP request "${method}" timed out after ${timeoutMs}ms`)),
-				timeoutMs,
-			);
+			timer = setTimeout(() => {
+				source.cancel();
+				reject(new Error(`LSP request "${method}" timed out after ${timeoutMs}ms`));
+			}, timeoutMs);
 		});
 		try {
 			return await Promise.race([pending, timeout]);
+		} catch (e) {
+			throw new Error(this.withStderrTail((e as Error).message));
 		} finally {
 			clearTimeout(timer);
+			source.dispose();
 			pending.catch(() => {}); // swallow a late settle after the timeout wins
 		}
+	}
+
+	/** Append the buffered server stderr to a request error for debuggability. */
+	private withStderrTail(message: string): string {
+		const tail = this.stderrTail.trim();
+		return tail ? `${message}\nRecent server stderr:\n${tail}` : message;
 	}
 
 	notify(method: string, params?: unknown): void {

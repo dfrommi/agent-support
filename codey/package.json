@@ -14,6 +14,7 @@
     "test": "node --test 'test/*.test.ts'"
   },
   "dependencies": {
+    "fuzzysort": "4.0.2",
     "tree-sitter-wasms": "0.1.13",
     "vscode-languageserver-protocol": "3.18.2",
     "web-tree-sitter": "0.25.10"

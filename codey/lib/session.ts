@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LanguageAdapter } from "./adapter.ts";
 import { CodeGraph } from "./graph.ts";
+import type { Symbol } from "./model.ts";
 
 /** Creates the language adapter for a root (e.g. `JavaAdapter.connect`). */
 export type AdapterFactory = (root: string) => Promise<LanguageAdapter>;
@@ -28,18 +29,10 @@ function digest(files: string[]): Map<string, number> {
 	return mtimes;
 }
 
-function changed(a: Map<string, number>, b: Map<string, number>): boolean {
-	if (a.size !== b.size) return true;
-	for (const [f, mtime] of a) {
-		if (b.get(f) !== mtime) return true;
-	}
-	return false;
-}
-
 /**
- * Return a cached graph for `root`, re-indexing through the *running* adapter
- * when any indexed file changed. Usages are never cached — they are always
- * computed live via the adapter.
+ * Return a cached graph for `root`, re-indexing only added/changed files
+ * through the *running* adapter and dropping removed ones. Usages are never
+ * cached — they are always computed live via the adapter.
  */
 export async function getGraph(root: string, factory: AdapterFactory): Promise<CodeGraph> {
 	const resolved = path.resolve(root);
@@ -48,12 +41,25 @@ export async function getGraph(root: string, factory: AdapterFactory): Promise<C
 	if (cached) {
 		const files = await cached.adapter.discoverSourceFiles(resolved);
 		const mtimes = digest(files);
-		if (!changed(cached.mtimes, mtimes)) {
+
+		const added = files.filter((f) => !cached.mtimes.has(f));
+		const changedFiles = files.filter((f) => cached.mtimes.has(f) && cached.mtimes.get(f) !== mtimes.get(f));
+		const removed = new Set(cached.files.filter((f) => !mtimes.has(f)));
+
+		if (added.length === 0 && changedFiles.length === 0 && removed.size === 0) {
 			return cached.graph;
 		}
 
-		const symbols = await cached.adapter.indexSymbols(resolved, files);
-		const graph = new CodeGraph(symbols, files, cached.adapter);
+		// Re-index only what changed; drop stale/removed symbols and merge the fresh ones in.
+		const stale = new Set([...changedFiles, ...removed]);
+		const kept = cached.graph.symbols.filter((s) => !stale.has(s.file));
+
+		let indexed: Symbol[] = [];
+		if (added.length + changedFiles.length > 0) {
+			indexed = await cached.adapter.indexSymbols(resolved, [...added, ...changedFiles]);
+		}
+
+		const graph = new CodeGraph([...kept, ...indexed], files, cached.adapter);
 		cached.graph = graph;
 		cached.files = files;
 		cached.mtimes = mtimes;

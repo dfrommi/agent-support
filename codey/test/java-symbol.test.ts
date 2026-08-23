@@ -22,6 +22,20 @@ describe("java symbol lookup (LSP)", () => {
 		}
 	});
 
+	it("records the Java package on symbols", async () => {
+		const adapter = await JavaAdapter.connect(FIXTURE);
+		try {
+			const graph = await createGraph(FIXTURE, adapter);
+			const cls = graph.symbol("UserService").find((s) => s.kind === "class");
+			assert.ok(cls);
+			assert.equal(cls.packageName, "com.example");
+			// members inherit the package too
+			assert.equal(graph.symbol("findById")[0].packageName, "com.example");
+		} finally {
+			await adapter.close();
+		}
+	});
+
 	it("finds a method with its container and signature", async () => {
 		const adapter = await JavaAdapter.connect(FIXTURE);
 		try {

@@ -51,6 +51,11 @@ describe("searchSymbols", () => {
 		assert.deepEqual(result.map((s) => s.name), ["findUser"]);
 	});
 
+	it("accepts Rust's `::` in substrings", () => {
+		const result = search({ substrings: ["UserService::find"] });
+		assert.deepEqual(result.map((s) => s.name), ["findUser"]);
+	});
+
 	it("still matches bare names", () => {
 		const names = search({ substrings: ["find"] }).map((s) => s.name).sort();
 		assert.deepEqual(names, ["findById", "findUser"]);
@@ -88,6 +93,32 @@ describe("searchSymbols", () => {
 		const result = search({ substrings: ["User"] });
 		assert.equal(result[0].name, "User");
 		assert.equal(result[0].kind, "class");
+	});
+
+	it("ranks camelCase-boundary matches above mid-word matches", () => {
+		const symbols = [
+			sym("abs", "AbsoluteHumidityStateProvider", "struct", `${MAIN}/A.rs`, 1),
+			sym("corr", "CorrelationId", "struct", `${MAIN}/C.rs`, 1),
+			sym("ext", "ExternalId", "struct", `${MAIN}/E.rs`, 1),
+			sym("id", "Id", "struct", `${MAIN}/I.rs`, 1),
+		];
+		const idGraph = new CodeGraph(symbols, [...new Set(symbols.map((s) => s.file))]);
+		const result = searchSymbols(idGraph, { substrings: ["Id"], scope: "all", root: ROOT });
+		assert.deepEqual(
+			result.map((s) => s.name),
+			["Id", "ExternalId", "CorrelationId", "AbsoluteHumidityStateProvider"],
+		);
+	});
+
+	it("searches proc-macro derive-name aliases", () => {
+		const derive = sym("derive", "state_enum_derive", "function", `${MAIN}/lib.rs`, 9);
+		derive.aliases = ["StateEnumDerive"];
+		const graph2 = new CodeGraph(
+			[...SYMBOLS, derive],
+			[...new Set([...SYMBOLS.map((s) => s.file), derive.file])],
+		);
+		const result = searchSymbols(graph2, { substrings: ["StateEnumDerive"], scope: "all", root: ROOT });
+		assert.deepEqual(result.map((s) => s.name), ["state_enum_derive"]);
 	});
 });
 
