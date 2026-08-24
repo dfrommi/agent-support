@@ -1,18 +1,28 @@
 ---
-description: Health-check and maintain the LLM wiki
+name: wiki-lint
+description: >
+  Health-check and maintain the LLM wiki. Use when the user says "lint", "health
+  check", "check the wiki", "clean up", "find problems", "audit", "maintain", or
+  "review wiki quality". Also triggers on "are there any contradictions",
+  "what's missing", or "what should we add next".
+disable-model-invocation: true
 ---
 # Wiki Lint
 
 Audit the wiki for structural and content issues, then report findings and optionally fix them. Think of this as a code linter but for a knowledge base.
 
+## Preconditions
+
+You have to know the wiki base directory, further referred to as `<wiki-base>`. If not provided, ask the user to specify it.
+
 ## Workflow
 
 ### 1. Scan the wiki
 
-Read `wiki/index.md` and then scan all wiki pages to build a picture of the current state:
+Read `<wiki-base>/wiki/index.md` and then scan all wiki pages to build a picture of the current state:
 
 ```bash
-find wiki/ -name "*.md" -not -name "index.md" -not -name "log.md" | sort
+fd -e md -E 'index.md' -E 'log.md' . '<wiki-base>/wiki/' | sort
 ```
 
 Read each page's frontmatter and content. Track:
@@ -26,7 +36,7 @@ Read each page's frontmatter and content. Track:
 Also scan the supporting directories:
 
 ```bash
-ls inbox/ insights/ archive/insights/ archive/sources/
+ls <wiki-base>/inbox/ <wiki-base>/insights/ <wiki-base>/archive/insights/ <wiki-base>/archive/sources/
 ```
 
 ### 2. Check for issues
@@ -53,17 +63,17 @@ Run these checks and collect findings:
 **Knowledge gaps:**
 
 - **Mentioned but missing** — entities or concepts frequently mentioned across pages but lacking their own dedicated page
-- **Undistilled inbox** — files in `inbox/` that haven't been turned into insights yet (suggest `wiki-insight`)
-- **Un-ingested insights** — files in `insights/` with no corresponding `ingest` entry in `wiki/log.md` and not cited from any wiki page (suggest `wiki-ingest`)
-- **Sources without insights** — files in `archive/sources/` not referenced by any active or archived insight's `source:` frontmatter (legacy raw imports; consider distilling)
+- **Undistilled inbox** — files in `<wiki-base>/inbox/` that haven't been turned into insights yet (suggest `wiki-insight`)
+- **Un-ingested insights** — files in `<wiki-base>/insights/` with no corresponding `ingest` entry in `<wiki-base>/wiki/log.md` and not cited from any wiki page (suggest `wiki-ingest`)
+- **Sources without insights** — files in `<wiki-base>/archive/sources/` not referenced by any active or archived insight's `source:` frontmatter (legacy raw imports; consider distilling)
 - **Weak areas** — topics with few sources compared to others, suggesting areas where more research would help
 
 **Insight-specific issues:**
 
-- **Broken `source:` links** — insight frontmatter pointing to a non-existent file in `archive/sources/`
-- **Malformed active insight filenames** — files in `insights/` not matching `YYYY-MM-DD-slug.md`
-- **Missing active insight frontmatter** — insights in `insights/` lacking `type: insight`, `source:`, or `focus`
-- **Missing archived ingested insights** — wiki `## Sources` insight links whose files cannot be found in `archive/insights/` or `insights/`
+- **Broken `source:` links** — insight frontmatter pointing to a non-existent file in `<wiki-base>/archive/sources/`
+- **Malformed active insight filenames** — files in `<wiki-base>/insights/` not matching `YYYY-MM-DD-slug.md`
+- **Missing active insight frontmatter** — insights in `<wiki-base>/insights/` lacking `type: insight`, `source:`, or `focus`
+- **Missing archived ingested insights** — wiki `## Sources` insight links whose files cannot be found in `<wiki-base>/archive/insights/` or `<wiki-base>/insights/`
 
 ### 3. Report findings
 
@@ -98,7 +108,7 @@ Ask the user which issues to fix. For each approved fix:
 - **Missing frontmatter** → add it based on page content
 - **Thin pages** → merge into related pages (confirm with user first)
 
-After fixing, update `wiki/log.md`:
+After fixing, update `<wiki-base>/wiki/log.md`:
 
 ```markdown
 ## [YYYY-MM-DD] lint | Health check
@@ -123,4 +133,3 @@ Based on the audit, recommend:
 - **Prioritize real problems.** Focus on issues that affect wiki usability (broken links, contradictions) over style nitpicks.
 - **Be specific.** Don't just say "some pages have issues" — name the pages, quote the conflicting claims, show the broken links.
 - **Track progress.** If the user runs lint regularly, compare against previous lint entries in the log to show improvement.
-

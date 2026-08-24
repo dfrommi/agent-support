@@ -1,50 +1,46 @@
 ---
 name: wiki-query
 description: >
-  Answer questions using the LLM wiki as the primary knowledge source — search
-  the index, read relevant pages, and synthesize grounded answers with citations.
-  Optionally save valuable answers back into the wiki as new synthesis pages. Use
-  when the user asks a question about wiki content, says "what do we know about",
-  "query the wiki", "search the wiki", "synthesize", "compare", or asks any
-  question that could be answered from existing wiki pages. Also triggers on
-  requests to create comparisons, analyses, or summaries from wiki content.
+  Answer questions using the wiki as the primary knowledge source — search the
+  index, read relevant pages, and synthesize grounded answers with citations.
+  Use when the user asks a question about wiki content, says "query the wiki",
+  "search the wiki", or asks any question that could be answered   pages. Don't
+  use without the user mentioning the wiki, don't use by your own initiative.our
+  own initiative.
 ---
-
-# Wiki Query
-
 Answer questions by searching the wiki, reading relevant pages, and synthesizing grounded answers. Good answers can be filed back into the wiki so explorations compound into the knowledge base.
 
+## Preconditions
+
+You have to know the wiki base directory, further referred to as `<wiki-base>`. If not provided, ask the user to specify it.
+  
 ## Workflow
 
 ### 1. Understand the question
 
 Parse what the user is actually asking. Identify:
+
 - **Key entities/concepts** to search for
 - **Type of answer needed** — factual lookup, synthesis across sources, comparison, timeline, analysis
 - **Scope** — everything we know, or a focused slice?
 
 ### 2. Search the wiki
 
-Start by reading `wiki/index.md` to identify candidate pages. Then read the most relevant pages.
+Start by reading `<wiki-base>/wiki/index.md` to identify candidate pages. Then read the most relevant pages.
 
 For broad questions, read more pages to ensure coverage. For focused questions, read fewer but more targeted pages.
 
 If the index alone isn't sufficient, search wiki files directly:
-```bash
-grep -rl "search term" wiki/
-```
 
-When a question's answer is plausibly in active raw material that hasn't been integrated yet, also search active insights — insights often contain finer-grained detail than the wiki pages they will feed into:
 ```bash
-grep -rl "search term" insights/
+rp -lF "search term" <wiki-base>/wiki/
 ```
-If a relevant active insight exists in `insights/`, mention that it may need `/wiki-ingest` before it becomes durable wiki knowledge. Archived ingested insight files live under `archive/insights/`, but wiki-first querying should rely on the wiki pages unless the user explicitly asks about archived workflow artifacts.
 
 ### 3. Synthesize the answer
 
 Compose an answer grounded in wiki content. Key rules:
 
-- **Cite your sources.** Reference wiki pages with `[[wikilinks]]` so the user can follow up. For claims traceable to raw sources, cite the wiki pages and their insight citations.
+- **Cite your sources.** Reference wiki pages so the user can follow up. For claims traceable to raw sources, cite the wiki pages and their insight citations.
 - **Don't hallucinate.** If the wiki doesn't contain enough information to answer fully, say so. Identify what's missing and suggest sources that could fill the gap.
 - **Note confidence levels.** Distinguish between claims backed by multiple sources vs. single-source claims.
 - **Surface contradictions.** If wiki pages disagree on something relevant to the question, present both sides.
@@ -66,12 +62,10 @@ If the answer represents significant synthesis work (combining multiple pages, c
 - **Synthesis pages** (`type: synthesis`) for cross-cutting analyses, comparisons, and summaries.
 - Use tags for finer distinctions such as comparison, timeline, or analysis.
 
-If the user agrees, create the page following wiki conventions, update `wiki/index.md`, and append to `wiki/log.md`:
+If the user agrees, create the page following wiki conventions, update `<wiki-base>/wiki/index.md`, and append to `<wiki-base>/wiki/log.md`:
 
 ```markdown
-## [YYYY-MM-DD] query | Question summary
-Answer was filed as [[Page Name]].
-Pages referenced: [[page1]], [[page2]], [[page3]]
+## [YYYY-MM-DD] synthesis | Question summary | <synthesis-page-name>
 ```
 
 If the answer is a simple lookup, just log the query without creating a page.
