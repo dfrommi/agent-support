@@ -48,7 +48,7 @@ repo documents nothing, the Standards axis is the smell baseline alone.
 ### 4. Dispatch four reviewers in parallel
 
 Run each reviewer as its own independent sub-agent using the same model and
-thinking effort as the current session.
+thinking effort as the current session. Use a timeout of 15 minutes.
 
 Write each reviewer's brief to a temp file and pass it with `@<path>`. Every
 brief must carry the diff command, the commit list, and the concern's own
