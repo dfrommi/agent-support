@@ -5,14 +5,13 @@
  *
  * ## 1. Data directory must be OUTSIDE the project root
  *    Eclipse refuses to import a project whose root overlaps the workspace.
- *    We place the workspace in $TMPDIR, keyed by a hash of the project path.
- *    (nvim-jdtls does the same — defaults to ~/.cache/jdtls/jdtls-<sha1>)
+ *    We reuse a persistent cache workspace when its project lease is free, and
+ *    use a private temporary workspace when another process owns the lease.
  *
- * ## 2. JAVA_HOME override for the jdtls process
- *    jdtls requires Java 21+. But the project itself may pin an older JDK
- *    (e.g. via .tool-versions or Gradle toolchain). Since the spawned process
- *    inherits the project cwd, asdf shims would pick up the project's JDK.
- *    We resolve a 21+ home before spawn (macOS: java_home, Linux: JAVA_HOME/env).
+ * ## 2. Java selection must be explicit
+ *    jdtls requires Java 21+. We resolve Java from the project cwd, validate
+ *    its version, and pass --java-executable so subagent environments do not
+ *    depend on JAVA_HOME being set.
  *
  * ## 3. Maven/Gradle import must be explicitly enabled
  *    Without initializationOptions.settings.java.import, jdtls opens the
@@ -33,14 +32,15 @@
  *    still start but cross-file resolution returns empty.
  */
 
-import crypto from "node:crypto";
-import { execSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SymbolKind as LspSymbolKind } from "vscode-languageserver-protocol";
 import { LspClient } from "../../lsp/client.ts";
 import { findBinary } from "../../lsp/findBinary.ts";
 import type { SymbolKind } from "../../lib/model.ts";
+import { acquireJdtlsWorkspace } from "./workspace.ts";
 
 // Resolve the launcher lazily so importing this module (e.g. loading the pi
 // extension) never throws just because jdtls is not installed.
@@ -62,47 +62,80 @@ const JDTLS_HOME = path.join(
 const LOMBOK = path.join(JDTLS_HOME, "lombok.jar");
 const CONFIG_DIR = process.platform === "darwin" ? "config_mac" : "config_linux";
 
-function dataDir(root: string): string {
-	const hash = crypto.createHash("sha1").update(root).digest("hex").slice(0, 12);
-	return path.join(os.tmpdir(), `jdtls-${hash}`);
+interface JavaRuntime {
+	executable: string;
+	home: string;
+	major: number;
 }
 
-function resolveJavaHome(): string {
-	// macOS: use java_home to find Java 21+
-	if (process.platform === "darwin") {
+function resolveJavaRuntime(root: string): JavaRuntime {
+	const candidates = [
+		...(process.env.JAVA_HOME ? [path.join(process.env.JAVA_HOME, "bin", "java")] : []),
+		"java",
+		...(process.platform === "darwin" ? ["/usr/libexec/java_home"] : []),
+	];
+	const failures: string[] = [];
+	for (const candidate of candidates) {
 		try {
-			return execSync("/usr/libexec/java_home -v 21", { encoding: "utf8" }).trim();
-		} catch {
-			try {
-				return execSync("/usr/libexec/java_home", { encoding: "utf8" }).trim();
-			} catch { /* fall through to JAVA_HOME */ }
+			const executable = candidate === "/usr/libexec/java_home"
+				? execFileSync(candidate, ["-v", "21"], { cwd: root, encoding: "utf8" }).trim() + "/bin/java"
+				: resolveExecutable(candidate, root);
+			const versionResult = spawnSync(executable, ["-XshowSettings:properties", "-version"], {
+				cwd: root,
+				encoding: "utf8",
+			});
+			if (versionResult.error) throw versionResult.error;
+			const version = `${versionResult.stdout}\n${versionResult.stderr}`;
+			const match = version.match(/version\s+"(\d+)/);
+			const major = match ? Number(match[1]) : 0;
+			if (major < 21) {
+				failures.push(`${candidate}: Java ${major || "unknown"}`);
+				continue;
+			}
+			const javaHome = version.match(/\bjava\.home\s*=\s*(.+)/)?.[1]?.trim();
+			if (!javaHome) throw new Error("java.home was not reported");
+			return { executable, home: javaHome, major };
+		} catch (error) {
+			failures.push(`${candidate}: ${(error as Error).message.split("\n")[0]}`);
 		}
 	}
-	// Linux / other: rely on JAVA_HOME env var
-	return process.env.JAVA_HOME ?? "";
+	throw new Error(`Could not find Java 21+ for jdtls in ${root}. Tried: ${failures.join("; ")}`);
+}
+
+function resolveExecutable(candidate: string, root: string): string {
+	if (path.isAbsolute(candidate)) return candidate;
+	return execFileSync("which", [candidate], { cwd: root, encoding: "utf8" }).trim();
 }
 
 export async function createJavaServer(root: string): Promise<LspClient> {
-	const dataDirPath = dataDir(root);
-	const args = [
-		"-data", dataDirPath,
-		"-configuration", path.join(JDTLS_HOME, CONFIG_DIR),
-		"--jvm-arg=-javaagent:" + LOMBOK,
-	];
+	const workspace = await acquireJdtlsWorkspace(root);
+	let client: LspClient | undefined;
+	try {
+		const java = resolveJavaRuntime(root);
+		const args = [
+			"-data", workspace.dataDir,
+			"-configuration", path.join(JDTLS_HOME, CONFIG_DIR),
+			"--java-executable", java.executable,
+			"--jvm-arg=-javaagent:" + LOMBOK,
+		];
+		client = new LspClient(getJdtlsLauncher(), args, root, { JAVA_HOME: java.home });
+		client.onShutdown(workspace.release);
 
-	const javaHome = resolveJavaHome();
-	const client = new LspClient(getJdtlsLauncher(), args, root, { JAVA_HOME: javaHome });
-
-	// Pitfall #3 + #4: Maven/Gradle import + workspaceFolders
-	await client.initialize(`file://${root}`, {
-		settings: {
-			java: {
-				import: { maven: { enabled: true }, gradle: { enabled: true } },
+		// Pitfall #3 + #4: Maven/Gradle import + workspaceFolders
+		await client.initialize(`file://${root}`, {
+			settings: {
+				java: {
+					import: { maven: { enabled: true }, gradle: { enabled: true } },
+				},
 			},
-		},
-	});
-	await client.initialized();
-	return client;
+		});
+		await client.initialized();
+		return client;
+	} catch (error) {
+		if (client) await client.shutdown();
+		else await workspace.release();
+		throw error;
+	}
 }
 
 export const languageId = "java";

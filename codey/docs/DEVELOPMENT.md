@@ -33,7 +33,8 @@ seams; this one is the fuller working memory.
 | `lib/uri.ts` | `uriToFile` (normalized `file://` → path) |
 | `lsp/client.ts` | generic JSON-RPC client on `vscode-jsonrpc` + protocol types; timeouts |
 | `lsp/findBinary.ts` | binary resolution |
-| `languages/java/lsp.ts` | jdtls startup (lazy launcher) + `lspKindToSymbolKind` |
+| `languages/java/lsp.ts` | jdtls startup, Java runtime selection, and `lspKindToSymbolKind` |
+| `languages/java/workspace.ts` | persistent JDTLS workspace lease with per-session fallback |
 | `languages/java/adapter.ts` | `JavaAdapter`: LSP discovery/indexing, usages, callees, `syncFiles` |
 | `languages/java/treesitter.ts` | `enrichSymbols`: annotations + Javadoc only |
 | `languages/rust/lsp.ts` | rust-analyzer startup (lazy launcher) + `lspKindToSymbolKind` |
@@ -123,7 +124,9 @@ seams; this one is the fuller working memory.
     triggers an *incremental* re-index of only added/changed files through the
     running adapter (see #22); usages/callees are **never cached** (always live
     LSP). An `opening` map dedupes concurrent `getGraph` calls so warmup + first
-    tool call don't spawn two language servers.
+    tool call don't spawn two language servers. Java's JDTLS workspace is
+    persistent under the user cache directory and is leased by an atomic lock;
+    concurrent processes use private temporary workspaces instead.
 18. **Usages render as a ranked sample by default.** `code` takes
     `usages: "summary" | "full"` (default `summary`). Summary dedupes call sites
     by containing symbol (`(×N)`), ranks different-file callers first, caps at
@@ -185,10 +188,13 @@ seams; this one is the fuller working memory.
   `selectionRange` is the name token; `range` includes leading Javadoc.
 - **jdtls call hierarchy `detail`** is the *fully-qualified* container
   (`com.example.UserService`) — reconcile against the inventory for simple names.
-- **jdtls startup pitfalls** (documented in `languages/java/lsp.ts`): data dir
-  outside project root; `JAVA_HOME` 21+ for the process; Maven/Gradle import
-  must be enabled via `initializationOptions`; `workspaceFolders` must be sent;
-  standard layout + buildable project required.
+- **jdtls startup pitfalls** (documented in `languages/java/lsp.ts`): workspace
+  data must stay outside the project root; the persistent workspace needs a
+  process lease; concurrent users fall back to private workspaces; Java 21+ is
+  resolved from the project cwd and passed with `--java-executable` (JAVA_HOME
+  is set only as a derived child-process hint); Maven/Gradle import must be
+  enabled via `initializationOptions`; `workspaceFolders` must be sent; standard
+  layout + buildable project required.
 - **rust-analyzer startup** (`languages/rust/lsp.ts`): poll
   `rust-analyzer/analyzerStatus` until it stops reporting "No workspaces"
   before indexing — documentSymbols can be empty/partial while the Cargo

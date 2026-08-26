@@ -39,6 +39,8 @@ export class LspClient {
 	private process: ChildProcess;
 	private connection: MessageConnection;
 	private stderrTail = "";
+	private shutdownHook?: () => Promise<void>;
+	private shutDown = false;
 
 	constructor(command: string, args: string[], cwd: string, env?: Record<string, string>) {
 		this.process = spawn(command, args, {
@@ -132,14 +134,24 @@ export class LspClient {
 		this.notify(InitializedNotification.method, {});
 	}
 
+	onShutdown(hook: () => Promise<void>): void {
+		this.shutdownHook = hook;
+	}
+
 	async shutdown(): Promise<void> {
+		if (this.shutDown) return;
+		this.shutDown = true;
 		try {
-			await this.request(ShutdownRequest.method, undefined, 3_000);
-		} catch {
-			// server may already be gone
+			try {
+				await this.request(ShutdownRequest.method, undefined, 3_000);
+			} catch {
+				// server may already be gone
+			}
+			this.notify(ExitNotification.method);
+			this.process.kill();
+		} finally {
+			await this.shutdownHook?.();
 		}
-		this.notify(ExitNotification.method);
-		this.process.kill();
 	}
 
 	async documentSymbols(uri: string): Promise<DocumentSymbol[]> {
