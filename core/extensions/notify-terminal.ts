@@ -1,9 +1,9 @@
 /**
  * Pi Notify Extension
  *
- * Sends a native macOS notification when Pi agent is done and waiting for
- * input. Clicking the notification brings WezTerm to the front and focuses
- * the pane running Pi. Skipped when Pi's pane is already focused and WezTerm
+ * Sends a native macOS notification when Pi is waiting for input. Clicking
+ * the notification brings WezTerm to the front and focuses the pane running
+ * Pi. Skipped when Pi's pane is already focused and WezTerm
  * is the frontmost app.
  */
 
@@ -13,6 +13,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const execFileAsync = promisify(execFile);
 const WEZTERM_BUNDLE_ID = "com.github.wez.wezterm";
+const INTERACTIVE_TOOL_NAMES = new Set(["ask_user_question"]);
 
 /** Absolute path to the `wezterm` CLI, derived from WezTerm's own env. */
 function weztermPath(): string {
@@ -89,14 +90,24 @@ async function isPaneFocused(): Promise<boolean> {
 	}
 }
 
+async function notifyWhenAway(body: string): Promise<void> {
+	const [frontmost, paneFocused] = await Promise.all([isWezTermFrontmost(), isPaneFocused()]);
+	// Skip the push only when the user is already looking at Pi's pane.
+	if (!frontmost || !paneFocused) {
+		notify("Pi", body);
+	}
+}
+
 export default function (pi: ExtensionAPI) {
+	pi.on("tool_execution_start", async (event) => {
+		if (INTERACTIVE_TOOL_NAMES.has(event.toolName)) {
+			await notifyWhenAway("Waiting for input");
+		}
+	});
+
 	// `agent_end` fires after each low-level run; Pi may still retry, compact,
 	// or continue with queued follow-ups. Notify only after the full run settles.
 	pi.on("agent_settled", async () => {
-		const [frontmost, paneFocused] = await Promise.all([isWezTermFrontmost(), isPaneFocused()]);
-		// Skip the push only when the user is already looking at Pi's pane.
-		if (!frontmost || !paneFocused) {
-			notify("Pi", "Ready for input");
-		}
+		await notifyWhenAway("Ready for input");
 	});
 }
