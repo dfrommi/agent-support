@@ -48,6 +48,7 @@ Once the user confirms the split, activate the first slice and work only on it.
 - Do not implement, plan, or investigate later slices except where necessary to validate the current boundary.
 - Keep the ordered split list in the conversation and track completed/current/pending slices explicitly.
 - At the end of the active slice, stop and report the changed files, validation, deviations, and review questions.
-- Wait for explicit user confirmation before continuing to the next slice.
+- Wait for explicit user confirmation. When the user confirms the active slice, commit it and immediately start the next pending slice.
 - A confirmation such as "continue", "next", or equivalent advances exactly one slice; otherwise ask for clarification.
+- Do not use words like "slice" or "step" in commit messages.
 - Do not automatically start the next slice after reporting completion.
