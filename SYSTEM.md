@@ -19,6 +19,7 @@ Subagents:
 - Spawn independent subagents by running `pi` non-interactively through the `bash` tool, then return its stdout.
 - Canonical form: `pi -p --provider "$PI_PROVIDER" --model "$PI_MODEL" --thinking "$PI_REASONING_LEVEL" "the prompt"`
 - For a long brief, write it to a temp file and pass `@<file>` in place of the quoted prompt.
+- Only spawn subagents when the user explicitly requests it or when a skill requires it. Do not spawn subagents on your own initiative. 
 
 {{APPEND_SYSTEM}}
 
