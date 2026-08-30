@@ -3,6 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import {
+	openCodeReview,
+	openLastMessageAnnotation,
+} from "@plannotator/pi-extension/plannotator-events";
+import { parseReviewArgs } from "@plannotator/pi-extension/generated/review-args";
+import { getLastAssistantMessageText } from "../lib/pi-helper.ts";
 
 /**
  * /diff [args]
@@ -13,6 +19,34 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
  * "/diff main" or "/diff --staged"). On quit, any captured comments are
  * placed in the input editor so you can add context before sending.
  */
+async function runPlannotatorToEditor(
+	ctx: ExtensionCommandContext,
+	start: () => Promise<{ feedback?: string; exit?: boolean }>,
+	label: string,
+): Promise<void> {
+	if (ctx.mode !== "tui") {
+		ctx.ui.notify(`/${label} requires the interactive TUI.`, "warning");
+		return;
+	}
+
+	try {
+		const result = await start();
+		const output = result.feedback?.trim() ?? "";
+		if (!output) {
+			ctx.ui.notify(`${label} complete — no feedback.`, "info");
+			return;
+		}
+
+		ctx.ui.setEditorText(output);
+		ctx.ui.notify(`${label} feedback placed in the editor — add context and press Enter to send.`, "info");
+	} catch (error) {
+		ctx.ui.notify(
+			`Plannotator ${label} failed: ${error instanceof Error ? error.message : String(error)}`,
+			"error",
+		);
+	}
+}
+
 export default function revdiff(pi: ExtensionAPI) {
 	pi.registerCommand("diff", {
 		description: "Run a revdiff review (default: all uncommitted changes vs HEAD) and place captured comments in the editor",
@@ -69,6 +103,36 @@ export default function revdiff(pi: ExtensionAPI) {
 
 			ctx.ui.setEditorText(`Review feedback:\n\n${rawOutput}`);
 			ctx.ui.notify("Review feedback placed in the editor — add context and press Enter to send.", "info");
+		},
+	});
+
+	pi.registerCommand("plannotator-review", {
+		description: "Run a Plannotator browser review and place feedback in the editor",
+		handler: async (args: string, ctx: ExtensionCommandContext) => {
+			const reviewArgs = parseReviewArgs(args);
+			await runPlannotatorToEditor(
+				ctx,
+				() => openCodeReview(ctx, reviewArgs),
+				"review",
+			);
+		},
+	});
+
+	pi.registerCommand("plannotator-last", {
+		description: "Annotate the last assistant message with Plannotator",
+		handler: async (_args: string, ctx: ExtensionCommandContext) => {
+			let message: string;
+			try {
+				message = getLastAssistantMessageText(ctx);
+			} catch (error) {
+				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+				return;
+			}
+			await runPlannotatorToEditor(
+				ctx,
+				() => openLastMessageAnnotation(ctx, message),
+				"last-message annotation",
+			);
 		},
 	});
 }

@@ -4,6 +4,7 @@
   "private": true,
   "keywords": ["pi-package"],
   "dependencies": {
+    "@plannotator/pi-extension": "^0.27.9",
     "unbash": "^4.0.0"
   }
 }
