@@ -14,6 +14,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 const execFileAsync = promisify(execFile);
 const WEZTERM_BUNDLE_ID = "com.github.wez.wezterm";
 const INTERACTIVE_TOOL_NAMES = new Set(["ask_user_question"]);
+let lastSentGroupId: string | undefined;
 
 /** Absolute path to the `wezterm` CLI, derived from WezTerm's own env. */
 function weztermPath(): string {
@@ -21,19 +22,33 @@ function weztermPath(): string {
 	return dir ? `${dir}/wezterm` : "wezterm";
 }
 
+function notificationGroup(): string {
+	const paneId = process.env.WEZTERM_PANE;
+	return paneId ? `pi-${paneId}` : "pi-default";
+}
+
+function removeNotification(): void {
+	const group = lastSentGroupId;
+	if (!group) return;
+	lastSentGroupId = undefined;
+
+	const child = spawn("terminal-notifier", ["-remove", group], { stdio: "ignore" });
+	child.on("error", () => {}); // terminal-notifier missing — fail silently
+	child.unref();
+}
+
 function notify(title: string, body: string): void {
-	// Note: -sender is intentionally omitted — terminal-notifier 2.0.0 hangs
-	// (never exits) when given it.
+	const paneId = process.env.WEZTERM_PANE;
+	const group = notificationGroup();
 	const args = [
 		"-title", title,
 		"-message", body,
-		"-group", "pi-settled",
+		"-group", group,
 	];
 
 	// Clicking the notification relaunches terminal-notifier in a fresh
 	// process without our shell environment, so the click command must carry
 	// the absolute wezterm path and unix socket itself.
-	const paneId = process.env.WEZTERM_PANE;
 	if (paneId) {
 		const socket = process.env.WEZTERM_UNIX_SOCKET;
 		const click = [
@@ -51,6 +66,7 @@ function notify(title: string, body: string): void {
 	}
 
 	const child = spawn("terminal-notifier", args, { stdio: "ignore" });
+	lastSentGroupId = group;
 	child.on("error", () => {}); // terminal-notifier missing — fail silently
 	child.unref();
 }
@@ -99,6 +115,13 @@ async function notifyWhenAway(body: string): Promise<void> {
 }
 
 export default function (pi: ExtensionAPI) {
+	pi.on("input", async (event) => {
+		if (event.source === "interactive") {
+			removeNotification();
+		}
+		return { action: "continue" };
+	});
+
 	pi.on("tool_execution_start", async (event) => {
 		if (INTERACTIVE_TOOL_NAMES.has(event.toolName)) {
 			await notifyWhenAway("Waiting for input");

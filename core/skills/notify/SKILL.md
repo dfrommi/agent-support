@@ -26,7 +26,7 @@ Use this skill when the task includes any of these intents:
 
 ## Available scripts
 
-- `./scripts/desktop.sh` — shows a local macOS notification with `osascript`
+- `./scripts/desktop.sh` — shows a local macOS notification with `terminal-notifier`
 - `./scripts/push.sh` — sends a Pushover notification with `curl`
 
 ## Arguments
