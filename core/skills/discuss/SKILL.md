@@ -9,6 +9,9 @@ disable-model-invocation: true
 
 Goal: Reach a shared understanding of a task or topic in preparation for implementation.
 
+Precondition: The user has provided a topic or task to discuss. Stop if not and ask for clarification.
+If the user has provided an external reference, like a document or ticket number, read its content first, then start the discussion.
+
 Interview me relentlessly until we reach a shared understanding of the task or topic.
 Continuously refine the discussion towards an implementation-ready understanding.
 The goal is not to force implementation. A valid outcome is deciding not to implement something.
@@ -45,4 +48,3 @@ Always conclude the discussion with a summary for review:
 - **Open questions**
 - **Technical details** - capture any technical details that were agreed upon during the discussion (signatures, interfaces, data structures, etc.)
 - **Decision log / rejected options** - capture alternatives that were considered but explicitly rejected or deferred, by the user and by you
-
